@@ -44,6 +44,17 @@ services:
       timeout: 5s
       retries: 5
 
+  cassandra:
+    image: cassandra:4.1
+    container_name: voice_agent_cassandra_v2
+    ports:
+      - "9042:9042"
+    healthcheck:
+      test: ["CMD", "cqlsh", "-e", "describe keyspaces"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+
   llm-orchestrator-server:
     build: .
     command: ["./llm-orchestrator-server"]
@@ -51,6 +62,7 @@ services:
       - MONGO_URI=mongodb://voice_agent_mongodb_v2:27017
       - REDIS_ADDR=voice_agent_redis_v2:6379
       - QDRANT_URL=http://voice_agent_qdrant_v2:6333
+      - CASSANDRA_HOSTS=cassandra
       - OLLAMA_URL=http://host.docker.internal:11434
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -60,6 +72,8 @@ services:
       redis:
         condition: service_healthy
       mongodb:
+        condition: service_healthy
+      cassandra:
         condition: service_healthy
     deploy:
       replicas: 3

@@ -111,7 +111,7 @@ fi
 
 # 6. Start Docker Compose Stack with Multi-Orchestrator replicas and Nginx Load Balancer
 if [ "$FORCE_REBUILD" = false ] && [ -n "$(docker compose ps --filter "status=running" --quiet)" ]; then
-    echo -e "${GREEN}✓ Services are already running on ports 9090/9083, skipping restart.${NC}"
+    echo -e "${GREEN}✓ Services are already running on ports 9090/9083/9042, skipping restart.${NC}"
     echo -e "${YELLOW}To force rebuild and restart the stack, run: ./start-app-v2.sh --force${NC}"
 else
     if [ "$FORCE_REBUILD" = true ]; then
@@ -126,8 +126,9 @@ fi
 echo -e "${BLUE}Waiting for database health checks to pass...${NC}"
 until [ "$(docker inspect --format='{{json .State.Health.Status}}' voice_agent_mongodb_v2)" == "\"healthy\"" ] && \
       [ "$(docker inspect --format='{{json .State.Health.Status}}' voice_agent_redis_v2)" == "\"healthy\"" ] && \
-      [ "$(docker inspect --format='{{json .State.Health.Status}}' voice_agent_qdrant_v2)" == "\"healthy\"" ]; do
-    echo -e "${YELLOW}Still waiting for DB health checks (Qdrant, Redis, MongoDB)...${NC}"
+      [ "$(docker inspect --format='{{json .State.Health.Status}}' voice_agent_qdrant_v2)" == "\"healthy\"" ] && \
+      [ "$(docker inspect --format='{{json .State.Health.Status}}' voice_agent_cassandra_v2)" == "\"healthy\"" ]; do
+    echo -e "${YELLOW}Still waiting for DB health checks (Qdrant, Redis, MongoDB, Cassandra)...${NC}"
     sleep 3
 done
 echo -e "${GREEN}✓ Databases are healthy and ready.${NC}"
