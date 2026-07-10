@@ -6,7 +6,7 @@ services:
       - "6333:6333"
       - "6334:6334"
     volumes:
-      - qdrant_storage:/qdrant/storage
+      - qdrant_storage_v2:/qdrant/storage
     deploy:
       resources:
         limits:
@@ -24,7 +24,7 @@ services:
       - "6379:6379"
     command: redis-server --appendonly yes --maxmemory 2gb --maxmemory-policy allkeys-lru
     volumes:
-      - redis_data:/data
+      - redis_data_v2:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -37,7 +37,7 @@ services:
     ports:
       - "27017:27017"
     volumes:
-      - mongodb_data:/data/db
+      - mongodb_data_v2:/data/db
     healthcheck:
       test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
       interval: 5s
@@ -118,6 +118,6 @@ services:
       - media-engine
 
 volumes:
-  qdrant_storage:
-  redis_data:
-  mongodb_data:
+  qdrant_storage_v2:
+  redis_data_v2:
+  mongodb_data_v2:

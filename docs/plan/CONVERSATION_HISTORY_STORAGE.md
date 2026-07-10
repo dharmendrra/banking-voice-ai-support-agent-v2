@@ -44,24 +44,37 @@ PRIMARY KEY ((user_id), conversation_id, turn_seq)
 
 This gives efficient "all conversations for user U" and "conversation X in order."
 
-## The caveat — Cassandra is the *operational* tier
+## The caveat — Cassandra is the *operational* tier, not analytics
 
-Cassandra is great for point/range reads by partition. Long-term analytics or compliance archiving can be added in the future if required, but for the hot operational path, Cassandra is the single sufficient store.
+Cassandra is great for point/range reads by partition, but **poor at ad-hoc
+aggregation** ("count balance intents across all users last month"). So:
 
-Production shape: **Orchestrator → Kafka → consumer → Cassandra** (operational history).
+- **Operational per-user/session history lookups → Cassandra.**
+- **Analytics / QA aggregation → ClickHouse or a warehouse** (BigQuery/Snowflake).
+- **Cheap long-term compliance archival → object storage** (S3/GCS + Parquet),
+  lifecycle-tiered.
+
+Production shape: **Orchestrator → Kafka → consumer → fan-out**: Cassandra
+(operational) + ClickHouse/warehouse (analytics) + object storage (archival).
+Kafka is the ingest/transport; Cassandra is one sink, not the whole story.
 
 ## Local scaffold
 
-- **Default:** keep it light — **Redis** working context + **Redis Streams** as
-  the Kafka stand-in. No Cassandra needed to validate the flow.
-- **Optional:** run a **single-node ScyllaDB** locally to exercise the
-  `Kafka(stand-in) → consumer → Cassandra` drain path. Not run by default (heavy
-  on an M3 Pro).
+- **Cassandra runs locally and in production** (single node locally, `cassandra:4.1`
+  in `docker-compose.yml`, keyspace `voiceagent`, table `conversations`). Working
+  context stays in **Redis**; each turn is sinked to Cassandra by the orchestrator
+  (`internal/history`), fire-and-forget off the live path. On connection failure it
+  degrades to a **log-only mock**, so the app still runs without the container.
+- Locally the orchestrator writes turns **directly** to Cassandra; in production
+  the write is decoupled through **Kafka → consumer → Cassandra** (Redis Streams is
+  the local Kafka stand-in). Same table either way.
 - **Never** put conversation history in the banking MongoDB.
 
 ## Summary
 
-- Working context = Redis; durable history = **Cassandra** (production),
+- Working context = Redis; durable history = **Cassandra** (local + production),
   fed by the Kafka consumer.
+- Cassandra = operational history lookups; pair with ClickHouse/warehouse for
+  analytics and object storage for archival.
 - Conversation history is a different domain from banking data — keep it out of
   the banking Mongo.
