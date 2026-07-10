@@ -64,6 +64,14 @@ func NewQdrantManager(baseURL string) (*QdrantManager, error) {
 func (q *QdrantManager) CreateCollection(ctx context.Context, name string, dim int) error {
 	url := fmt.Sprintf("%s/collections/%s", q.BaseURL, name)
 
+	// Drop any existing collection first so a changed embedding dimension (e.g.
+	// nomic 768 → bge-m3 1024) takes effect — Qdrant rejects a size mismatch.
+	if delReq, derr := http.NewRequestWithContext(ctx, "DELETE", url, nil); derr == nil {
+		if delResp, err := q.HTTPClient.Do(delReq); err == nil {
+			delResp.Body.Close()
+		}
+	}
+
 	bodyMap := map[string]any{
 		"vectors": map[string]any{
 			"size":     dim,
