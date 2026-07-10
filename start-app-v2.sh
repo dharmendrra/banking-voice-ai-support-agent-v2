@@ -122,13 +122,18 @@ else
     docker compose up -d --build
 fi
 
+# Helper function to query container health safely without template parsing errors on startup
+get_container_health() {
+    docker inspect --format='{{if .State.Health}}{{.State.Health.Status}}{{else}}starting{{end}}' "$1" 2>/dev/null || echo "starting"
+}
+
 # Wait for databases to pass health checks
 echo -e "${BLUE}Waiting for database health checks to pass...${NC}"
-until [ "$(docker inspect --format='{{json .State.Health.Status}}' voice_agent_mongodb_v2)" == "\"healthy\"" ] && \
-      [ "$(docker inspect --format='{{json .State.Health.Status}}' voice_agent_redis_v2)" == "\"healthy\"" ] && \
-      [ "$(docker inspect --format='{{json .State.Health.Status}}' voice_agent_qdrant_v2)" == "\"healthy\"" ] && \
-      [ "$(docker inspect --format='{{json .State.Health.Status}}' voice_agent_cassandra_v2)" == "\"healthy\"" ] && \
-      [ "$(docker inspect --format='{{json .State.Health.Status}}' voice_agent_livekit_v2)" == "\"healthy\"" ]; do
+until [ "$(get_container_health voice_agent_mongodb_v2)" == "healthy" ] && \
+      [ "$(get_container_health voice_agent_redis_v2)" == "healthy" ] && \
+      [ "$(get_container_health voice_agent_qdrant_v2)" == "healthy" ] && \
+      [ "$(get_container_health voice_agent_cassandra_v2)" == "healthy" ] && \
+      [ "$(get_container_health voice_agent_livekit_v2)" == "healthy" ]; do
     echo -e "${YELLOW}Still waiting for DB and Gateway health checks (Qdrant, Redis, MongoDB, Cassandra, LiveKit)...${NC}"
     sleep 3
 done
