@@ -23,7 +23,15 @@ func NewBankingMCPServer(mongoManager *db.MongoManager) *BankingMCPServer {
 func (s *BankingMCPServer) CallTool(ctx context.Context, name string, args map[string]any) (string, error) {
 	ctx, span := telemetry.Step(ctx, "mcp."+name)
 	defer span.End()
-	log.Printf("[MCP] Calling tool '%s' with arguments: %+v", name, args)
+	loggedArgs := make(map[string]any)
+	for k, v := range args {
+		if k == "to" {
+			loggedArgs[k] = "[MASKED]"
+		} else {
+			loggedArgs[k] = v
+		}
+	}
+	log.Printf("[MCP] Calling tool '%s' with arguments: %+v", name, loggedArgs)
 
 	userID, ok := args["user_id"].(string)
 	if !ok || userID == "" {

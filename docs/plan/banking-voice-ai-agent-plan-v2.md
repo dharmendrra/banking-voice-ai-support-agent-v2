@@ -163,7 +163,7 @@ services:
       retries: 5
 
   livekit:
-    image: livekit/livekit:latest
+    image: livekit/livekit-server:latest
     container_name: local_livekit
     command: --dev --config /etc/livekit.yaml
     ports:

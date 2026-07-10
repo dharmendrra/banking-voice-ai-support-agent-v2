@@ -45,7 +45,7 @@ Make sure you have the following installed on your machine:
 *   **Ollama** (Running locally on port `11434`)
 
 ### Setup & Launch
-Simply execute the intelligent bootstrapper script. It checks system prerequisites, downloads required LLM models (`gemma2:2b` and `nomic-embed-text`), compiles Go binaries, and launches the container stack:
+Simply execute the intelligent bootstrapper script. It checks system prerequisites, downloads required LLM models (`qwen2.5:7b-instruct` and `bge-m3`), compiles Go binaries, and launches the container stack:
 
 ```bash
 ./start-app-v2.sh

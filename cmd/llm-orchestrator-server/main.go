@@ -39,8 +39,11 @@ type OrchestratorServer struct {
 func main() {
 	log.Println("Starting Standalone LLM Orchestrator Server...")
 
-	// Initialize OpenTelemetry stack (no-op unless OTEL_EXPORTER_OTLP_ENDPOINT is set)
-	tShutdown, _ := telemetry.Init(context.Background(), "llm-orchestrator-server")
+	// Initialize OpenTelemetry stack (fail-fast if the OTLP collector is down/offline)
+	tShutdown, _, err := telemetry.Init(context.Background(), "llm-orchestrator-server")
+	if err != nil {
+		log.Fatalf("Fatal: Telemetry initialization failed (observability endpoint is down): %v", err)
+	}
 	defer func() { _ = tShutdown(context.Background()) }()
 	log.Printf("[Telemetry] Telemetry enabled: %t", telemetry.Enabled())
 

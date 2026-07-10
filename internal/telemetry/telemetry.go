@@ -9,8 +9,13 @@ package telemetry
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
+	"net"
+	"net/url"
 	"os"
+	"strings"
+	"time"
 
 	"go.opentelemetry.io/contrib/bridges/otelslog"
 	"go.opentelemetry.io/otel"
@@ -31,13 +36,39 @@ import (
 // Enabled reports whether telemetry export is configured.
 func Enabled() bool { return os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT") != "" }
 
+// verifyEndpointUp performs a fast TCP connection dial to check if the OTLP receiver is online.
+func verifyEndpointUp(endpoint string) error {
+	var hostPort string
+	u, err := url.Parse(endpoint)
+	if err != nil || u.Host == "" {
+		hostPort = strings.TrimPrefix(strings.TrimPrefix(endpoint, "http://"), "https://")
+	} else {
+		hostPort = u.Host
+	}
+
+	if !strings.Contains(hostPort, ":") {
+		hostPort = hostPort + ":4317"
+	}
+
+	conn, err := net.DialTimeout("tcp", hostPort, 2*time.Second)
+	if err != nil {
+		return fmt.Errorf("observability endpoint %s is offline or unreachable: %w", hostPort, err)
+	}
+	conn.Close()
+	return nil
+}
+
 // Init sets up global tracer/meter/logger providers exporting OTLP. It returns a
-// shutdown func (flushes buffers) and a structured logger. If telemetry is
-// disabled it returns a plain stderr slog logger and a no-op shutdown.
-func Init(ctx context.Context, serviceName string) (shutdown func(context.Context) error, logger *slog.Logger) {
-	if !Enabled() {
-		return func(context.Context) error { return nil },
-			slog.New(slog.NewJSONHandler(os.Stderr, nil))
+// shutdown func (flushes buffers), a structured logger, and a connection error if the endpoint is down.
+func Init(ctx context.Context, serviceName string) (shutdown func(context.Context) error, logger *slog.Logger, err error) {
+	endpoint := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
+	if endpoint == "" {
+		endpoint = "http://localhost:4317" // Default OTel standard endpoint
+	}
+
+	// Verify the collector is up before starting (fail-fast)
+	if err := verifyEndpointUp(endpoint); err != nil {
+		return nil, nil, err
 	}
 
 	// Global propagator so trace context crosses service boundaries
@@ -58,27 +89,38 @@ func Init(ctx context.Context, serviceName string) (shutdown func(context.Contex
 	)
 	otel.SetMeterProvider(mp)
 
-	logExp, _ := otlploggrpc.New(ctx)
-	lp := sdklog.NewLoggerProvider(
-		sdklog.WithProcessor(sdklog.NewBatchProcessor(logExp)),
-		sdklog.WithResource(res),
-	)
-	otellog.SetLoggerProvider(lp)
+	var lp *sdklog.LoggerProvider
+	if os.Getenv("OTEL_LOGS_EXPORTER") != "none" {
+		logExp, err := otlploggrpc.New(ctx)
+		if err == nil {
+			lp = sdklog.NewLoggerProvider(
+				sdklog.WithProcessor(sdklog.NewBatchProcessor(logExp)),
+				sdklog.WithResource(res),
+			)
+			otellog.SetLoggerProvider(lp)
+		}
+	}
 
 	shutdown = func(c context.Context) error {
 		_ = tp.Shutdown(c)
 		_ = mp.Shutdown(c)
-		return lp.Shutdown(c)
+		if lp != nil {
+			_ = lp.Shutdown(c)
+		}
+		return nil
 	}
-	// slog bridged to OTLP -> Loki, auto-correlated with traces by trace_id.
-	return shutdown, otelslog.NewLogger(serviceName)
+
+	if os.Getenv("OTEL_LOGS_EXPORTER") == "none" {
+		return shutdown, Logger(serviceName), nil
+	}
+	return shutdown, otelslog.NewLogger(serviceName), nil
 }
 
 // Logger returns a structured logger. When telemetry is enabled it bridges to
-// OTLP (→ Loki, trace-correlated); otherwise it writes JSON to stderr.
+// OTLP (→ Loki, trace-correlated); otherwise it writes JSON to stderr with trace correlation.
 func Logger(name string) *slog.Logger {
-	if !Enabled() {
-		return slog.New(slog.NewJSONHandler(os.Stderr, nil))
+	if !Enabled() || os.Getenv("OTEL_LOGS_EXPORTER") == "none" {
+		return slog.New(newTraceCorrelatingHandler(os.Stderr, name))
 	}
 	return otelslog.NewLogger(name)
 }
@@ -96,3 +138,28 @@ func Tracer(name string) trace.Tracer { return otel.Tracer(name) }
 
 // Meter returns a named meter from the global provider.
 func Meter(name string) metric.Meter { return otel.Meter(name) }
+
+// traceCorrelatingHandler intercepts log records and injects active OTel trace/span IDs
+type traceCorrelatingHandler struct {
+	slog.Handler
+	name string
+}
+
+func newTraceCorrelatingHandler(w *os.File, name string) *traceCorrelatingHandler {
+	return &traceCorrelatingHandler{
+		Handler: slog.NewJSONHandler(w, &slog.HandlerOptions{Level: slog.LevelInfo}),
+		name:    name,
+	}
+}
+
+func (h *traceCorrelatingHandler) Handle(ctx context.Context, r slog.Record) error {
+	r.AddAttrs(slog.String("logger", h.name))
+	spanContext := trace.SpanContextFromContext(ctx)
+	if spanContext.IsValid() {
+		r.AddAttrs(
+			slog.String("trace_id", spanContext.TraceID().String()),
+			slog.String("span_id", spanContext.SpanID().String()),
+		)
+	}
+	return h.Handler.Handle(ctx, r)
+}

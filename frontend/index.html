@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Voice AI Support Agent v2 Dashboard</title>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=JetBrains+Mono:wght@400;700&family=Noto+Sans+Devanagari:wght@300;400;600;800&display=swap" rel="stylesheet">
     <style>
         :root {
             --bg-primary: #0a0c10;
@@ -27,7 +27,7 @@
         }
 
         body {
-            font-family: 'Outfit', sans-serif;
+            font-family: 'Outfit', 'Noto Sans Devanagari', sans-serif;
             background-color: var(--bg-primary);
             color: var(--text-main);
             height: 100vh;
@@ -286,16 +286,17 @@
         .assistant-container {
             display: flex;
             flex-direction: column;
-            justify-content: center;
+            justify-content: flex-start;
             align-items: center;
             height: 100%;
-            gap: 2rem;
+            gap: 1rem;
+            padding-top: 1.5rem;
         }
 
         .voice-circle-container {
             position: relative;
-            width: 180px;
-            height: 180px;
+            width: 110px;
+            height: 110px;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -317,14 +318,14 @@
         }
 
         .voice-circle-inner {
-            width: 120px;
-            height: 120px;
+            width: 80px;
+            height: 80px;
             background: radial-gradient(circle, var(--accent-primary) 0%, rgba(108, 92, 231, 0.4) 100%);
             border-radius: 50%;
             display: flex;
             align-items: center;
             justify-content: center;
-            box-shadow: 0 0 30px var(--glow-color);
+            box-shadow: 0 0 20px var(--glow-color);
             cursor: pointer;
             transition: all 0.3s ease;
             z-index: 2;
@@ -332,19 +333,19 @@
 
         .voice-circle-inner.listening {
             background: radial-gradient(circle, var(--accent-warning) 0%, rgba(255, 177, 66, 0.4) 100%);
-            box-shadow: 0 0 30px rgba(255, 177, 66, 0.4);
+            box-shadow: 0 0 20px rgba(255, 177, 66, 0.4);
             transform: scale(1.05);
         }
 
         .voice-circle-inner.halted {
             background: radial-gradient(circle, var(--accent-danger) 0%, rgba(255, 82, 82, 0.4) 100%);
-            box-shadow: 0 0 30px rgba(255, 82, 82, 0.5);
+            box-shadow: 0 0 20px rgba(255, 82, 82, 0.5);
             animation: shake 0.5s ease-in-out;
         }
 
         .voice-circle-inner svg {
-            width: 48px;
-            height: 48px;
+            width: 32px;
+            height: 32px;
             fill: white;
             transition: all 0.3s ease;
         }
@@ -393,44 +394,77 @@
             100% { height: 40px; }
         }
 
-        .text-display-box {
-            width: 80%;
-            background-color: var(--bg-tertiary);
+        .chat-container {
+            width: 95%;
+            height: 480px;
+            background-color: var(--bg-secondary);
             border: 1px solid var(--border-color);
-            border-radius: 12px;
+            border-radius: 16px;
             padding: 1.2rem;
-            min-height: 120px;
-            max-height: 200px;
             overflow-y: auto;
-            box-shadow: inset 0 2px 8px rgba(0,0,0,0.2);
+            display: flex;
+            flex-direction: column;
+            gap: 1.2rem;
+            box-shadow: inset 0 2px 10px rgba(0,0,0,0.3);
+            margin-top: 1rem;
         }
 
-        .transcript-label {
-            font-size: 0.75rem;
+        .chat-message {
+            display: flex;
+            flex-direction: column;
+            max-width: 80%;
+            animation: bubbleFadeIn 0.3s ease;
+        }
+
+        @keyframes bubbleFadeIn {
+            from { opacity: 0; transform: translateY(8px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .chat-message.user {
+            align-self: flex-end;
+            align-items: flex-end;
+        }
+
+        .chat-message.agent {
+            align-self: flex-start;
+            align-items: flex-start;
+        }
+
+        .chat-bubble {
+            padding: 0.8rem 1.1rem;
+            border-radius: 16px;
+            font-size: 1rem;
+            line-height: 1.4;
+            word-wrap: break-word;
+        }
+
+        .chat-message.user .chat-bubble {
+            background-color: var(--accent-primary);
+            color: white;
+            border-bottom-right-radius: 4px;
+        }
+
+        .chat-message.agent .chat-bubble {
+            background-color: var(--bg-tertiary);
+            color: var(--text-main);
+            border: 1px solid var(--border-color);
+            border-bottom-left-radius: 4px;
+        }
+
+        .chat-message.partial .chat-bubble {
+            background-color: rgba(108, 92, 231, 0.15);
             color: var(--text-muted);
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            margin-bottom: 0.5rem;
-        }
-
-        .transcript-text {
-            font-size: 1.1rem;
-            line-height: 1.5;
-        }
-
-        .transcript-text.partial {
-            color: var(--text-muted);
+            border: 1px dashed var(--accent-primary);
             font-style: italic;
         }
 
-        .agent-reply-box {
-            width: 80%;
-            background: linear-gradient(135deg, rgba(108, 92, 231, 0.05), rgba(0, 206, 201, 0.05));
-            border: 1px solid var(--accent-primary);
-            border-radius: 12px;
-            padding: 1.2rem;
-            min-height: 100px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        .chat-sender {
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            margin-bottom: 0.25rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
         }
 
         /* Settings and Config Panel */
@@ -703,18 +737,16 @@
                     <div class="wave-bar"></div>
                 </div>
 
-                <div class="text-display-box">
-                    <div class="transcript-label">User Transcripts (Stable Partials)</div>
-                    <div class="transcript-text" id="transcript-val">Click the microphone to start speaking...</div>
+                <div class="chat-container" id="chat-history-box">
+                    <div class="chat-message agent">
+                        <div class="chat-sender">Agent</div>
+                        <div class="chat-bubble" id="welcome-chat-bubble">System initialized. Awaiting voice connection...</div>
+                    </div>
                 </div>
 
-                <div class="agent-reply-box">
-                    <div class="transcript-label">Agent Audio Output (TTS)</div>
-                    <div class="transcript-text" id="agent-reply-val">Agent response will show here...</div>
-                    <div class="confirm-btn-group" id="confirm-box" style="display: none;">
-                        <button class="btn btn-confirm" id="btn-confirm-yes">Confirm</button>
-                        <button class="btn btn-cancel" id="btn-confirm-no">Cancel</button>
-                    </div>
+                <div class="confirm-btn-group" id="confirm-box" style="display: none; margin-top: 1rem; justify-content: center; gap: 1rem; width: 100%;">
+                    <button class="btn btn-confirm" id="btn-confirm-yes">Confirm</button>
+                    <button class="btn btn-cancel" id="btn-confirm-no">Cancel</button>
                 </div>
             </div>
         </section>
@@ -740,6 +772,17 @@
                         </label>
                     </div>
 
+                    <div class="toggle-container" style="margin-top: 1rem; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 1rem; padding-bottom: 0.5rem;">
+                        <div>
+                            <h3 style="font-size: 0.9rem; font-weight: 600;">TTS Engine</h3>
+                            <p style="font-size: 0.75rem; color: var(--text-muted);">Choose synthesis engine</p>
+                        </div>
+                        <select id="tts-engine-select" style="background-color: var(--bg-primary); color: var(--text-main); border: 1px solid var(--border-color); padding: 0.4rem 0.8rem; border-radius: 8px; font-family: inherit; font-size: 0.85rem; outline: none; cursor: pointer;">
+                            <option value="kokoro" selected>Local Kokoro (GPU)</option>
+                            <option value="native">System Native (0ms Lag)</option>
+                        </select>
+                    </div>
+
                     <div class="slider-control">
                         <label>
                             <span>EXTREME Threshold (Halt)</span>
@@ -751,9 +794,9 @@
                     <div class="slider-control">
                         <label>
                             <span>NORMAL Threshold (Dispatch)</span>
-                            <span id="normal-val-label">0.88</span>
+                            <span id="normal-val-label">0.94</span>
                         </label>
-                        <input type="range" id="normal-slider" min="0.80" max="0.95" step="0.01" value="0.88">
+                        <input type="range" id="normal-slider" min="0.80" max="0.95" step="0.01" value="0.94">
                     </div>
 
                     <div class="latency-badge">
@@ -776,8 +819,7 @@
         const micIcon = document.getElementById('mic-icon');
         const micCircleOuter = document.getElementById('mic-circle-outer');
         const visualWaveform = document.getElementById('visual-waveform');
-        const transcriptVal = document.getElementById('transcript-val');
-        const agentReplyVal = document.getElementById('agent-reply-val');
+        const chatHistoryBox = document.getElementById('chat-history-box');
         const logTerminal = document.getElementById('log-terminal');
         const confirmBox = document.getElementById('confirm-box');
         
@@ -801,7 +843,28 @@
         let isListening = false;
         let isHalted = false;
         let utteranceStartTime = 0;
+
+        // Global Error Handler to print browser errors on the screen terminal
+        window.onerror = function(message, source, lineno, colno, error) {
+            if (typeof addLog === 'function') {
+                addLog('JS-ERROR', `${message} (${lineno}:${colno})`, 'error');
+            }
+        };
         let currentUtteranceId = "";
+        let activeAudio = null;
+
+        function sendClientLog(level, eventName, message) {
+            if (socket && socket.readyState === WebSocket.OPEN) {
+                socket.send(JSON.stringify({
+                    type: 'client_log',
+                    payload: {
+                        level: level,
+                        event: eventName,
+                        message: message
+                    }
+                }));
+            }
+        }
 
         // UI Slider adjustments
         extremeSlider.addEventListener('input', (e) => {
@@ -826,6 +889,12 @@
                 wsIndicator.className = 'status-indicator connected';
                 wsText.textContent = 'Connected';
                 addLog('WS', 'Connected to Go Orchestrator backend');
+                
+                const welcomeBubble = document.getElementById('welcome-chat-bubble');
+                if (welcomeBubble) {
+                    welcomeBubble.textContent = "Connected. Awaiting welcome greeting...";
+                }
+                
                 sendConfig();
                 fetchBankingData();
             };
@@ -834,6 +903,15 @@
                 wsIndicator.className = 'status-indicator';
                 wsText.textContent = 'Disconnected';
                 addLog('WS', 'Disconnected from backend. Retrying in 3s...', 'error');
+                
+                hasGreeted = false; // Reset greeting flag so the next session greeting can speak
+                
+                const welcomeBubble = document.getElementById('welcome-chat-bubble');
+                if (welcomeBubble) {
+                    welcomeBubble.id = 'welcome-chat-bubble'; // Re-enable ID for reconnect override
+                    welcomeBubble.textContent = "Disconnected from backend. Retrying in 3s...";
+                }
+                
                 setTimeout(connectWebSocket, 3000);
             };
 
@@ -859,24 +937,66 @@
             }));
         }
 
+        let hasGreeted = false;
+
         function handleBackendMessage(msg) {
             switch(msg.type) {
                 case 'log_event':
                     formatLogEvent(msg.event, msg.payload);
                     break;
                 case 'agent_speech':
-                    agentReplyVal.textContent = msg.text;
-                    agentReplyVal.className = 'transcript-text';
+                    // If it's the very first welcome message, overwrite the initial placeholder bubble
+                    const welcomeBubble = document.getElementById('welcome-chat-bubble');
+                    if (welcomeBubble && (welcomeBubble.textContent.includes("initialized") || welcomeBubble.textContent.includes("Awaiting") || welcomeBubble.textContent.includes("Disconnected"))) {
+                        if (msg.text.includes("welcome back to ICICI Bank support")) {
+                            if (hasGreeted) {
+                                console.log("[WS] Suppressing repeated welcome greeting on reconnect");
+                                welcomeBubble.textContent = "Session active. Speak to start banking.";
+                                break;
+                            }
+                            hasGreeted = true;
+                        }
+                        // Change id so it doesn't get matched again
+                        welcomeBubble.removeAttribute('id');
+                        typewriteText(welcomeBubble, msg.text, 30);
+                    } else {
+                        // Otherwise append a new agent message bubble
+                        if (msg.text.includes("welcome back to ICICI Bank support")) {
+                            if (hasGreeted) {
+                                console.log("[WS] Suppressing repeated welcome greeting on reconnect");
+                                break;
+                            }
+                            hasGreeted = true;
+                        }
+                        appendChatMessage('agent', msg.text);
+                    }
+
                     speakTTS(msg.text);
                     if (msg.latency_ms) {
                         latencyMetric.textContent = `${msg.latency_ms} ms`;
                     }
                     break;
                 case 'confirmation_required':
-                    agentReplyVal.textContent = msg.text;
-                    agentReplyVal.className = 'transcript-text';
+                    appendChatMessage('agent', msg.text);
                     confirmBox.style.display = 'flex';
                     speakTTS(msg.text);
+                    break;
+                case 'resume_playback':
+                    console.log("[Continuation] Received resume_playback command from LLM. Resuming audio queue...");
+                    if (audioQueue && audioQueue.length > 0) {
+                        currentPlayId = audioQueue[0].playId;
+                        processAudioQueue();
+                    } else {
+                        console.warn("[Continuation] Local audio queue is empty. Requesting more details...");
+                        if (socket && socket.readyState === WebSocket.OPEN) {
+                            socket.send(JSON.stringify({
+                                type: 'final_transcript',
+                                turn_id: currentUtteranceId,
+                                text: 'tell me more details',
+                                timestamp_ms: Date.now()
+                            }));
+                        }
+                    }
                     break;
                 case 'banking_data_update':
                     updateBankingUI(msg.payload);
@@ -966,6 +1086,18 @@
             }, 600);
         }
 
+        let shouldBeListening = false;
+
+        function resumeSpeechIfNeeded() {
+            if (shouldBeListening && recognition && !isListening) {
+                try {
+                    recognition.start();
+                } catch (e) {
+                    console.warn("[STT] Failed to auto-resume recognition:", e);
+                }
+            }
+        }
+
         // Web Speech API STT
         function setupSpeechRecognition() {
             const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -985,14 +1117,23 @@
                 micCircleOuter.className = 'voice-circle-outer listening';
                 micBtn.className = 'voice-circle-inner listening';
                 visualWaveform.className = 'waveform active';
-                transcriptVal.textContent = "Listening...";
-                transcriptVal.className = "transcript-text partial";
-                agentReplyVal.textContent = "Agent is waiting...";
                 confirmBox.style.display = 'none';
-                
+
                 // Reset timers
                 utteranceStartTime = Date.now();
                 currentUtteranceId = "urn-" + Date.now();
+                 
+                 // Play stashed welcome greeting only after SpeechRecognition is successfully listening
+                 if (pendingWelcomeText) {
+                     const textToSpeak = pendingWelcomeText;
+                     pendingWelcomeText = "";
+                     speakTTS(textToSpeak);
+                 }
+            };
+
+            recognition.onerror = (event) => {
+                console.error("[STT] Speech recognition error:", event.error);
+                sendClientLog('error', 'stt_error', 'Web Speech API error: ' + event.error);
             };
 
             recognition.onend = () => {
@@ -1001,6 +1142,15 @@
                 micCircleOuter.className = 'voice-circle-outer';
                 micBtn.className = 'voice-circle-inner';
                 visualWaveform.className = 'waveform';
+
+                // Auto-restart if we are in active voice mode (continuous listening / barge-in support)
+                if (shouldBeListening) {
+                    try {
+                        recognition.start();
+                    } catch (e) {
+                        console.warn("[STT] Auto-restart on end failed:", e);
+                    }
+                }
             };
 
             recognition.onresult = (event) => {
@@ -1015,9 +1165,61 @@
                     }
                 }
 
+                // Active Barge-in / Interruption: Abort agent audio immediately when user starts speaking!
+                if (interimTranscript.trim() || finalTranscript.trim()) {
+                    const speechText = (interimTranscript || finalTranscript).trim().toLowerCase();
+                    
+                    // Echo filter check: if the heard text is part of what the agent is currently speaking, ignore it!
+                    let isEcho = false;
+                    if (currentlyPlayingItem && currentlyPlayingItem.text) {
+                        const agentTextClean = currentlyPlayingItem.text.toLowerCase().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()?]/g,"");
+                        const heardTextClean = speechText.toLowerCase().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()?]/g,"");
+                        
+                        if (agentTextClean.includes(heardTextClean) || heardTextClean.includes(agentTextClean)) {
+                            isEcho = true;
+                        } else {
+                            // Check word overlap: if > 50% of heard words are in the agent's text, it's likely echo
+                            const heardWords = heardTextClean.split(/\s+/).filter(w => w.length > 2);
+                            if (heardWords.length > 0) {
+                                let matchCount = 0;
+                                heardWords.forEach(w => {
+                                    if (agentTextClean.includes(w)) matchCount++;
+                                });
+                                if (matchCount / heardWords.length > 0.5) {
+                                    isEcho = true;
+                                }
+                            }
+                        }
+                    }
+                    
+                    if (isEcho) {
+                        console.log("[Barge-in] Filtered out echo (agent speaking its own voice):", speechText);
+                        return; // Ignore echo entirely and do not send to backend
+                    } else {
+                        let interrupted = false;
+                        if (activeAudio) {
+                            activeAudio.pause();
+                            activeAudio = null;
+                            console.log("[Barge-in] Stopped agent audio playback because user spoke.");
+                            sendClientLog('info', 'barge_in', 'Customer interrupted agent audio playback.');
+                            interrupted = true;
+                        }
+                        if ('speechSynthesis' in window && window.speechSynthesis.speaking) {
+                            window.speechSynthesis.cancel();
+                            console.log("[Barge-in] Stopped native TTS speech because user spoke.");
+                            sendClientLog('info', 'barge_in', 'Customer interrupted agent native speech.');
+                            interrupted = true;
+                        }
+                        if (interrupted && currentlyPlayingItem) {
+                            console.log("[Barge-in] Prepending interrupted chunk back to queue:", currentlyPlayingItem.text);
+                            audioQueue.unshift(currentlyPlayingItem);
+                            currentlyPlayingItem = null;
+                        }
+                    }
+                }
+
                 if (interimTranscript) {
-                    transcriptVal.textContent = interimTranscript;
-                    transcriptVal.className = "transcript-text partial";
+                    appendChatMessage('user', interimTranscript, true);
                     
                     // Send stable partials to backend for speculative warming (Branch A) + Cache Probe (Branch B)
                     if (socket && socket.readyState === WebSocket.OPEN) {
@@ -1031,8 +1233,7 @@
 
                 if (finalTranscript) {
                     const cleanFinal = finalTranscript.trim();
-                    transcriptVal.textContent = cleanFinal;
-                    transcriptVal.className = "transcript-text";
+                    appendChatMessage('user', cleanFinal, false);
                     
                     // Mark the start of post-speech processing
                     utteranceStartTime = Date.now();
@@ -1050,24 +1251,429 @@
             };
         }
 
-        // Web Speech API TTS
-        function speakTTS(text) {
+        let preferredVoiceUS = null;
+        let preferredVoiceHI = null;
+
+        function loadVoices() {
             if ('speechSynthesis' in window) {
-                // Cancel any ongoing speaking
-                window.speechSynthesis.cancel();
-                const utterance = new SpeechSynthesisUtterance(text);
-                utterance.rate = 1.0;
-                window.speechSynthesis.speak(utterance);
+                const voices = window.speechSynthesis.getVoices();
+                
+                // 1. Find US English Female Voice
+                const preferredUSNames = ["siri", "aria", "jenny", "ava", "allison", "samantha", "google us english", "victoria", "zira"];
+                const enUSVoices = voices.filter(v => v.lang.replace('_', '-').toLowerCase().startsWith('en-us'));
+                if (enUSVoices.length > 0) {
+                    for (const name of preferredUSNames) {
+                        const match = enUSVoices.find(v => v.name.toLowerCase().includes(name));
+                        if (match) {
+                            preferredVoiceUS = match;
+                            break;
+                        }
+                    }
+                    if (!preferredVoiceUS) {
+                        preferredVoiceUS = enUSVoices[0];
+                    }
+                }
+
+                // 2. Find Hindi Indian Female Voice
+                const preferredHINames = ["siri", "lekha", "google हिन्दी", "google hindi", "kalpana", "neel"];
+                const hiINVoices = voices.filter(v => v.lang.replace('_', '-').toLowerCase().startsWith('hi-in'));
+                if (hiINVoices.length > 0) {
+                    for (const name of preferredHINames) {
+                        const match = hiINVoices.find(v => v.name.toLowerCase().includes(name));
+                        if (match) {
+                            preferredVoiceHI = match;
+                            break;
+                        }
+                    }
+                    if (!preferredVoiceHI) {
+                        preferredVoiceHI = hiINVoices[0];
+                    }
+                }
+                
+                console.log("[TTS] Available en-US Voices:", enUSVoices.map(v => v.name));
+                console.log("[TTS] Available hi-IN Voices:", hiINVoices.map(v => v.name));
+                console.log("[TTS] Selected US Voice:", preferredVoiceUS ? preferredVoiceUS.name : "None");
+                console.log("[TTS] Selected Hindi Voice:", preferredVoiceHI ? preferredVoiceHI.name : "None");
             }
+        }
+
+        if ('speechSynthesis' in window) {
+            window.speechSynthesis.onvoiceschanged = loadVoices;
+            loadVoices();
+        }
+
+        let typingInterval = null;
+        let activeUserBubble = null;
+        let activeAgentBubble = null;
+
+        function createAgentChatBubble() {
+            if (!chatHistoryBox) return null;
+
+            const msgDiv = document.createElement('div');
+            msgDiv.className = 'chat-message agent';
+            
+            const senderDiv = document.createElement('div');
+            senderDiv.className = 'chat-sender';
+            senderDiv.textContent = 'Agent';
+            
+            const bubbleDiv = document.createElement('div');
+            bubbleDiv.className = 'chat-bubble';
+            
+            msgDiv.appendChild(senderDiv);
+            msgDiv.appendChild(bubbleDiv);
+            chatHistoryBox.appendChild(msgDiv);
+
+            chatHistoryBox.scrollTop = chatHistoryBox.scrollHeight;
+            return bubbleDiv;
+        }
+
+        function appendChatMessage(sender, text, isPartial = false) {
+            if (!chatHistoryBox) return;
+            
+            // Handle partial user transcript
+            if (sender === 'user' && isPartial) {
+                if (!activeUserBubble) {
+                    const msgDiv = document.createElement('div');
+                    msgDiv.className = 'chat-message user partial';
+                    
+                    const senderDiv = document.createElement('div');
+                    senderDiv.className = 'chat-sender';
+                    senderDiv.textContent = 'You';
+                    
+                    const bubbleDiv = document.createElement('div');
+                    bubbleDiv.className = 'chat-bubble';
+                    
+                    msgDiv.appendChild(senderDiv);
+                    msgDiv.appendChild(bubbleDiv);
+                    chatHistoryBox.appendChild(msgDiv);
+                    
+                    activeUserBubble = bubbleDiv;
+                }
+                activeUserBubble.textContent = text;
+                chatHistoryBox.scrollTop = chatHistoryBox.scrollHeight;
+                return;
+            }
+
+            // Handle finalized user transcript
+            if (sender === 'user' && !isPartial) {
+                if (activeUserBubble) {
+                    activeUserBubble.parentElement.className = 'chat-message user';
+                    activeUserBubble.textContent = text;
+                    activeUserBubble = null;
+                } else {
+                    const msgDiv = document.createElement('div');
+                    msgDiv.className = 'chat-message user';
+                    
+                    const senderDiv = document.createElement('div');
+                    senderDiv.className = 'chat-sender';
+                    senderDiv.textContent = 'You';
+                    
+                    const bubbleDiv = document.createElement('div');
+                    bubbleDiv.className = 'chat-bubble';
+                    bubbleDiv.textContent = text;
+                    
+                    msgDiv.appendChild(senderDiv);
+                    msgDiv.appendChild(bubbleDiv);
+                    chatHistoryBox.appendChild(msgDiv);
+                }
+                chatHistoryBox.scrollTop = chatHistoryBox.scrollHeight;
+                return;
+            }
+
+            // Handle agent replies
+            if (sender === 'agent') {
+                activeUserBubble = null; // reset user active partials
+                activeAgentBubble = createAgentChatBubble();
+                typewriteText(activeAgentBubble, text, 30);
+            }
+        }
+
+        function typewriteText(element, text, speed = 80) {
+            if (typingInterval) clearInterval(typingInterval);
+            element.textContent = "";
+            
+            const words = text.split(" ");
+            let i = 0;
+            
+            typingInterval = setInterval(() => {
+                if (i < words.length) {
+                    element.textContent += (i === 0 ? "" : " ") + words[i];
+                    i++;
+                    if (chatHistoryBox) {
+                        chatHistoryBox.scrollTop = chatHistoryBox.scrollHeight;
+                    }
+                } else {
+                    clearInterval(typingInterval);
+                    typingInterval = null;
+                }
+            }, speed);
+        }
+
+        let currentPlayId = 0;
+        let audioQueue = [];
+        let isPlayingQueue = false;
+        let currentlyPlayingItem = null;
+
+        // Web Speech API TTS (Fallback for chunks)
+        function speakNativeTTSChunk(text, isHindi, playId) {
+            if (playId !== currentPlayId) {
+                isPlayingQueue = false;
+                processAudioQueue();
+                return;
+            }
+            if ('speechSynthesis' in window) {
+                const utterance = new SpeechSynthesisUtterance(text);
+                utterance.rate = 1.05; // Slightly faster for natural banking flow
+                utterance.pitch = 1.0;
+                
+                if (isHindi && preferredVoiceHI) {
+                    utterance.voice = preferredVoiceHI;
+                } else if (preferredVoiceUS) {
+                    utterance.voice = preferredVoiceUS;
+                }
+                
+                utterance.onend = () => {
+                    isPlayingQueue = false;
+                    processAudioQueue();
+                };
+                utterance.onerror = (event) => {
+                    if (event.error === 'not-allowed' && !userInteracted) {
+                        console.log("[TTS] Native SpeechSynthesis autoplay blocked.");
+                        isPlayingQueue = false;
+                        audioQueue = [];
+                        return;
+                    }
+                    isPlayingQueue = false;
+                    processAudioQueue();
+                };
+
+                window.speechSynthesis.speak(utterance);
+            } else {
+                isPlayingQueue = false;
+                processAudioQueue();
+            }
+        }
+
+        // Fallback to Google Translate TTS (for chunks)
+        function speakGoogleTTSChunk(text, isHindi, playId) {
+            if (playId !== currentPlayId) {
+                isPlayingQueue = false;
+                processAudioQueue();
+                return;
+            }
+            const lang = isHindi ? 'hi' : 'en-US';
+            try {
+                const url = `https://translate.google.com/translate_tts?ie=UTF-8&tl=${lang}&client=tw-ob&q=${encodeURIComponent(text)}`;
+                activeAudio = new Audio(url);
+                activeAudio.addEventListener('ended', () => {
+                    isPlayingQueue = false;
+                    activeAudio = null;
+                    processAudioQueue();
+                });
+                activeAudio.addEventListener('error', () => {
+                    isPlayingQueue = false;
+                    activeAudio = null;
+                    processAudioQueue();
+                });
+                activeAudio.play().catch(err => {
+                    if (err.name === 'NotAllowedError' && !userInteracted) {
+                        console.log("[TTS] Google fallback autoplay blocked.");
+                        isPlayingQueue = false;
+                        audioQueue = [];
+                        return;
+                    }
+                    console.warn("[TTS] Google chunk playback failed, falling back to native:", err);
+                    sendClientLog('warn', 'google_tts_failed', 'Google Translate TTS playback failed: ' + err.message);
+                    speakNativeTTSChunk(text, isHindi, playId);
+                });
+            } catch (e) {
+                console.warn("[TTS] Google chunk initialization failed, falling back to native:", e);
+                sendClientLog('warn', 'google_tts_init_failed', 'Google Translate TTS initialization failed: ' + e.message);
+                speakNativeTTSChunk(text, isHindi, playId);
+            }
+        }
+
+        let userInteracted = false;
+        let pendingWelcomeText = "";
+
+        // Track first user gesture to unlock audio context & play pending welcome greeting
+        window.addEventListener('click', () => {
+            if (!userInteracted) {
+                userInteracted = true;
+                shouldBeListening = true; // Auto-activate voice mode on first gesture
+                
+                // 1. Force-unlock HTML5 Audio context
+                const silentAudio = new Audio("data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAAA");
+                silentAudio.play().then(() => {
+                    console.log("[Autoplay] HTML5 Audio context unlocked.");
+                }).catch(e => console.warn("[Autoplay] Audio unlock skipped/failed:", e));
+
+                if (!recognition) setupSpeechRecognition();
+                
+                // Always start listening immediately on first gesture so barge-in works on welcome greeting!
+                resumeSpeechIfNeeded();
+            }
+        });
+
+        // Process the sentence chunks sequentially to minimize start lag
+        function processAudioQueue() {
+            if (audioQueue.length === 0) {
+                isPlayingQueue = false;
+                activeAudio = null;
+                resumeSpeechIfNeeded(); // Resume microphone once all chunks finish speaking
+                return;
+            }
+
+            isPlayingQueue = true;
+            const nextItem = audioQueue.shift();
+            currentlyPlayingItem = nextItem;
+
+            // Discard outdated playback tasks
+            if (nextItem.playId !== currentPlayId) {
+                isPlayingQueue = false;
+                processAudioQueue();
+                return;
+            }
+
+            // Check if System Native TTS is selected for instant 0ms playback
+            const ttsSelect = document.getElementById('tts-engine-select');
+            if (ttsSelect && ttsSelect.value === 'native') {
+                const text = nextItem.text;
+                const isHindi = /[\u0900-\u097F]/.test(text) || /\b(namaste|namaskar|aap|kaise|hain|achha|ji|shukriya|hai|ko|se|ki|kya|bhai|karke|sakte|taraf)\b/i.test(text);
+                speakNativeTTSChunk(text, isHindi, nextItem.playId);
+                return;
+            }
+
+            const text = nextItem.text;
+            const isHindi = /[\u0900-\u097F]/.test(text) || /\b(namaste|namaskar|aap|kaise|hain|achha|ji|shukriya|hai|ko|se|ki|kya|bhai|karke|sakte|taraf)\b/i.test(text);
+            const voice = isHindi ? 'if_sara' : 'af_bella'; 
+
+            try {
+                // Fetch the synthesized audio bytes from our local Kokoro TTS server via Nginx proxy
+                fetch('/v1/audio/speech', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        model: 'kokoro',
+                        input: text,
+                        voice: voice,
+                        response_format: 'mp3',
+                        speed: 1.0
+                    })
+                })
+                .then(response => {
+                    if (nextItem.playId !== currentPlayId) return null; // Discard outdated response
+                    if (!response.ok) {
+                        throw new Error(`Kokoro HTTP error: ${response.status}`);
+                    }
+                    return response.blob();
+                })
+                .then(blob => {
+                    if (blob === null || nextItem.playId !== currentPlayId) {
+                        isPlayingQueue = false;
+                        processAudioQueue();
+                        return;
+                    }
+                    const audioUrl = URL.createObjectURL(blob);
+                    activeAudio = new Audio(audioUrl);
+                    activeAudio.addEventListener('ended', () => {
+                        isPlayingQueue = false;
+                        activeAudio = null;
+                        processAudioQueue(); // Process next sentence chunk
+                    });
+                    activeAudio.addEventListener('error', () => {
+                        isPlayingQueue = false;
+                        activeAudio = null;
+                        processAudioQueue();
+                    });
+                    activeAudio.play().catch(err => {
+                        if (err.name === 'NotAllowedError' && !userInteracted) {
+                            console.log("[TTS] Kokoro autoplay blocked. Storing greeting until user click.");
+                            sendClientLog('warn', 'autoplay_blocked', 'Browser blocked audio autoplay. Storing greeting.');
+                            isPlayingQueue = false;
+                            audioQueue = [];
+                            return;
+                        }
+                        console.warn("[TTS] Kokoro chunk play failed, falling back to Google TTS:", err);
+                        sendClientLog('warn', 'kokoro_play_failed', 'Kokoro playback failed: ' + err.message);
+                        speakGoogleTTSChunk(text, isHindi, nextItem.playId);
+                    });
+                })
+                .catch(err => {
+                    if (nextItem.playId !== currentPlayId) return;
+                    console.warn("[TTS] Kokoro chunk synthesis failed, falling back to Google TTS:", err);
+                    sendClientLog('warn', 'kokoro_synthesis_failed', 'Kokoro synthesis failed: ' + err.message);
+                    speakGoogleTTSChunk(text, isHindi, nextItem.playId);
+                });
+            } catch (e) {
+                if (nextItem.playId !== currentPlayId) return;
+                console.warn("[TTS] Kokoro chunk initialization failed, falling back to Google TTS:", e);
+                sendClientLog('warn', 'kokoro_init_failed', 'Kokoro initialization failed: ' + e.message);
+                speakGoogleTTSChunk(text, isHindi, nextItem.playId);
+            }
+        }
+
+        // Hybrid TTS: Tries high-quality local neural Kokoro-82M first, falls back to Google TTS and Web Speech API.
+        function speakTTS(text) {
+            currentPlayId++;
+            const myPlayId = currentPlayId;
+
+            // Clear current audio queue and halt any playing streams
+            audioQueue = [];
+            isPlayingQueue = false;
+            currentlyPlayingItem = null;
+
+            if (activeAudio) {
+                activeAudio.pause();
+                activeAudio = null;
+            }
+            if ('speechSynthesis' in window) {
+                window.speechSynthesis.cancel();
+            }
+
+            // Stash original greeting paragraph as pending welcome fallback if user hasn't clicked yet
+            if (!userInteracted) {
+                pendingWelcomeText = text;
+            }
+
+            // Segment paragraph into sentences using punctuation (. ! ?)
+            const sentences = text.match(/[^.!?\n]+[.!?\n]*/g) || [text];
+            const cleanSentences = sentences
+                .map(s => s.trim())
+                .filter(s => s.length > 0);
+
+            if (cleanSentences.length === 0) return;
+
+            // Enqueue all sentence chunks
+            audioQueue = cleanSentences.map(sentence => ({
+                text: sentence,
+                playId: myPlayId
+            }));
+
+            // Start synthesis of the first chunk
+            processAudioQueue();
         }
 
         micBtn.addEventListener('click', () => {
             if (isHalted) return;
             if (isListening) {
+                shouldBeListening = false;
                 recognition.stop();
             } else {
+                shouldBeListening = true;
                 if (!recognition) setupSpeechRecognition();
                 if (recognition) recognition.start();
+                
+                // Manually stop active agent playback on user action
+                if (activeAudio) {
+                    activeAudio.pause();
+                    activeAudio = null;
+                }
+                if ('speechSynthesis' in window) {
+                    window.speechSynthesis.cancel();
+                }
             }
         });
 

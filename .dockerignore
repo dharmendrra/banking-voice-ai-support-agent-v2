@@ -1,0 +1,5 @@
+native-kokoro/
+venv/
+.git/
+*.wav
+*.mp3

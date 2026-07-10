@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"banking-voice-ai-agent/internal/audit"
 	"banking-voice-ai-agent/internal/db"
 	"banking-voice-ai-agent/internal/mcp"
 	"banking-voice-ai-agent/internal/ollama"
@@ -38,11 +39,12 @@ type ConfirmationContext struct {
 }
 
 type TurnSupervisor struct {
-	Redis     *db.RedisManager
-	Qdrant    *db.QdrantManager
-	Cassandra *db.CassandraManager
-	Ollama    *ollama.Client
-	MCP       *mcp.BankingMCPServer
+	Redis        *db.RedisManager
+	Qdrant       *db.QdrantManager
+	Cassandra    *db.CassandraManager
+	Ollama       *ollama.Client
+	MCP          *mcp.BankingMCPServer
+	AuditService *audit.ToolCallAuditService
 
 	// Configurations
 	ExtremeThreshold float64
@@ -60,8 +62,9 @@ func NewTurnSupervisor(r *db.RedisManager, q *db.QdrantManager, o *ollama.Client
 		Cassandra:        c,
 		Ollama:           o,
 		MCP:              m,
+		AuditService:     audit.NewToolCallAuditService(m, r),
 		ExtremeThreshold: 0.96, // Cosine score >= 0.96 for halt
-		NormalThreshold:  0.88, // Cosine score >= 0.88 for final dispatch
+		NormalThreshold:  0.94, // Cosine score >= 0.94 for final dispatch
 		WarmingEnabled:   true, // enabled by default
 	}
 }
@@ -95,7 +98,29 @@ func (s *TurnSupervisor) GetNormalThreshold() float64 {
 
 // LogEvent helper to write to Go log and Redis Streams (Kafka stand-in)
 func (s *TurnSupervisor) LogEvent(ctx context.Context, turnID string, eventName string, payload map[string]any) {
-	log.Printf("[EVENT] %s %v", eventName, payload)
+	// Redact sensitive fields from payload for stdout/telemetry logging
+	redactedPayload := make(map[string]any)
+	sensitiveKeys := map[string]bool{
+		"partial_text":     true,
+		"final_transcript": true,
+		"query":            true,
+		"text":             true,
+		"message":          true,
+		"response":         true,
+		"args":             true,
+		"result":           true,
+		"payload":          true,
+		"user_id":          true,
+		"session_id":       true,
+	}
+	for k, v := range payload {
+		if sensitiveKeys[strings.ToLower(k)] {
+			redactedPayload[k] = "[REDACTED]"
+		} else {
+			redactedPayload[k] = v
+		}
+	}
+	log.Printf("[EVENT] %s %v", eventName, redactedPayload)
 	// Write asynchronously to Redis stream
 	go func() {
 		bgCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -134,12 +159,12 @@ func (s *TurnSupervisor) HandleStablePartial(ctx context.Context, turnID string,
 	}
 
 	// 2. Branch B: cache probe (Embed text and search Qdrant).
-	embCtx, embCancel := context.WithTimeout(ctx, 1*time.Second)
+	embCtx, embCancel := context.WithTimeout(ctx, 5*time.Second)
 	defer embCancel()
 
 	emb, err := s.Ollama.GetEmbedding(embCtx, partialText)
 	if err != nil {
-		log.Printf("Embedding error on partial '%s': %v", partialText, err)
+		log.Printf("Embedding error on partial: %v", err)
 		return false, nil
 	}
 
@@ -224,12 +249,10 @@ func (s *TurnSupervisor) HandleFinalTranscript(ctx context.Context, turnID strin
 	ctx, span := telemetry.Tracer("orchestrator").Start(ctx, "turn",
 		trace.WithAttributes(
 			attribute.String("turn_id", turnID),
-			attribute.String("session_id", sessionID),
-			attribute.String("user_id", userID),
 		))
 	defer span.End()
 
-	log.Printf("[Supervisor] Handling final transcript: '%s' (intercepted: %t)", finalTranscript, intercepted)
+	log.Printf("[Supervisor] Handling final transcript (intercepted: %t)", intercepted)
 
 	// Fetch conversation history from Redis
 	history, err := s.Redis.GetSessionContext(ctx, sessionID)
@@ -359,6 +382,32 @@ func (s *TurnSupervisor) HandleFinalTranscript(ctx context.Context, turnID strin
 		return "", "", err
 	}
 
+	cleanedResponse := cleanJSONResponse(response)
+
+	// Delegate tool call verification, execution, and auditing to the ToolCallAuditService
+	if strings.HasPrefix(cleanedResponse, "{") && strings.HasSuffix(cleanedResponse, "}") {
+		res, err := s.AuditService.ExecuteToolCall(ctx, turnID, sessionID, userID, cleanedResponse)
+		if err == nil {
+			if res.Status == "confirm_required" {
+				return s.executeCommitPath(ctx, turnID, sessionID, userID, res.Payload, finalTranscript, history)
+			} else if res.Status == "success" {
+				// Use LLM to formulate a natural verbal response grounded in the tool output
+				formattedText, err := s.formatLLMResponse(ctx, finalTranscript, res.ResponseText)
+				if err != nil {
+					log.Printf("[Supervisor] Warning: LLM formatting failed for fallback tool: %v. Using raw response.", err)
+					formattedText = res.ResponseText
+				}
+				safeText := s.ApplyOutputGuardrailFilter(formattedText, res.ResponseText)
+				return "text", safeText, nil
+			} else if res.Status == "resume_playback" {
+				return "resume_playback", "", nil
+			}
+		} else {
+			log.Printf("[Supervisor] ToolCallAuditService error: %v (cleaned response was: %s)", err, cleanedResponse)
+			return "text", "I'm sorry, I encountered a validation check error.", nil
+		}
+	}
+
 	// Run output guardrail filter to block un-sourced values
 	safeText := s.ApplyOutputGuardrailFilter(response, "")
 
@@ -369,7 +418,6 @@ func (s *TurnSupervisor) HandleFinalTranscript(ctx context.Context, turnID strin
 func (s *TurnSupervisor) executeCommitPath(ctx context.Context, turnID string, sessionID string, userID string, actionPayload map[string]any, finalTranscript string, history []ollama.ChatMessage) (string, string, error) {
 	intent := actionPayload["intent"].(string)
 	bankAction := actionPayload["bank_action"].(string)
-	responseTemplate := actionPayload["response_template"].(string)
 
 	// Check if this action requires confirmation (mutating action)
 	if intent == "transfer" || intent == "block_card" {
@@ -444,18 +492,11 @@ func (s *TurnSupervisor) executeCommitPath(ctx context.Context, turnID string, s
 		return "text", "I'm sorry, I encountered an issue retrieving your bank details. Let me connect you with a representative.", nil
 	}
 
-	// Parse tool output to inject into template
-	var mcpData map[string]any
-	_ = json.Unmarshal([]byte(mcpRes), &mcpData)
-
-	responseText := responseTemplate
-	if intent == "balance" {
-		balanceStr := fmt.Sprintf("%.2f %s", mcpData["balance"].(float64), mcpData["currency"].(string))
-		responseText = strings.ReplaceAll(responseText, "{{balance}}", balanceStr)
-	} else if intent == "transactions" {
-		responseText = strings.ReplaceAll(responseText, "{{transactions}}", mcpData["text"].(string))
-	} else if intent == "due_date" {
-		responseText = strings.ReplaceAll(responseText, "{{due_date}}", mcpData["due_date"].(string))
+	// Use LLM to formulate a natural verbal response grounded in the tool output
+	responseText, err := s.formatLLMResponse(ctx, finalTranscript, mcpRes)
+	if err != nil {
+		log.Printf("[Supervisor] Warning: LLM formatting failed: %v. Falling back to raw response.", err)
+		responseText = mcpRes
 	}
 
 	// Verify guardrail
@@ -553,13 +594,7 @@ func (s *TurnSupervisor) HandleConfirmation(ctx context.Context, turnID string, 
 // runLLMDeflector executes the LLM fallthrough in a deflector role
 func (s *TurnSupervisor) runLLMDeflector(ctx context.Context, sessionID string, query string, history []ollama.ChatMessage) (string, error) {
 	// Construct role-limited prompt (§6)
-	systemPrompt := `You are a multilingual AI assistant for a retail bank. You support both English and Hindi.
-LANGUAGE RULE: Detect the language of the customer's query (English or Hindi/Hinglish) and respond in the same language. For example, if the query is in Hindi, reply in Hindi/Hinglish.
-ROLE LIMITATION: You are ONLY allowed to act as conversational glue. You can greet customers, clarify their intent, or offer to transfer them to a human representative.
-CRITICAL SAFETY RULE: You have NO access to bank products, interest rates, fee structures, or account details. You must NEVER state any interest rates, card details, balance figures, transaction details, or payment procedures on your own.
-If the customer asks a factual bank question that you do not have in your trusted conversation history, you MUST politely refuse to answer and offer to connect them to a human representative.
-Never make up any figures, percentages, dates, phone numbers, or balances.
-If the query is out of scope, state clearly that you cannot assist with that and offer a human agent.`
+	systemPrompt := DefaultSystemPrompt
 
 	var messages []ollama.ChatMessage
 	messages = append(messages, ollama.ChatMessage{Role: "system", Content: systemPrompt})
@@ -588,9 +623,39 @@ If the query is out of scope, state clearly that you cannot assist with that and
 // ApplyOutputGuardrailFilter validates that any numerical values in the LLM response exist in the trusted source data.
 // Returns a sanitized response or a deflection if the check fails.
 func (s *TurnSupervisor) ApplyOutputGuardrailFilter(responseText string, trustedSourceData string) string {
-	// Extract numbers from responseText
-	re := regexp.MustCompile(`\b\d+(?:[\.,]\d+)?\b`)
-	numbers := re.FindAllString(responseText, -1)
+	// 1. Security Check: Block any disclosure of PIN, CVV, OTP, or Passwords
+	rePinCvv := regexp.MustCompile(`(?i)\b(pin|cvv|cvc|otp|password|passcode)\b.*?(\b\d{3,6}\b)`)
+	if rePinCvv.MatchString(responseText) {
+		log.Printf("[SECURITY] Suppressed response due to sensitive credentials (PIN/CVV/OTP) leak risk")
+		return "For security reasons, I cannot disclose or discuss PINs, CVVs, or passwords over this line."
+	}
+
+	// 2. Masking Check: Automatically mask full credit card numbers (12-19 digits)
+	// Match typical credit cards: 16 digits, with optional spaces or hyphens
+	reCard := regexp.MustCompile(`\b(?:\d{4}[- ]?){3}(\d{4})\b`)
+	if reCard.MatchString(responseText) {
+		responseText = reCard.ReplaceAllString(responseText, "XXXX-XXXX-XXXX-$1")
+	}
+	
+	// Mask any raw card number written as a single long digit sequence (9 to 15 digits + 4 suffix)
+	reLongNum := regexp.MustCompile(`\b\d{9,15}(\d{4})\b`)
+	if reLongNum.MatchString(responseText) {
+		responseText = reLongNum.ReplaceAllString(responseText, "******$1")
+	}
+
+	// Extract and parse all numbers from trustedSourceData as float64
+	reNum := regexp.MustCompile(`\b\d+(?:[\.,]\d+)?\b`)
+	trustedNumbers := reNum.FindAllString(trustedSourceData, -1)
+	trustedFloats := make(map[float64]bool)
+	for _, rawNum := range trustedNumbers {
+		cleanNum := strings.ReplaceAll(rawNum, ",", "")
+		if val, err := strconv.ParseFloat(cleanNum, 64); err == nil {
+			trustedFloats[val] = true
+		}
+	}
+
+	// Extract and parse all numbers from responseText
+	numbers := reNum.FindAllString(responseText, -1)
 
 	if len(numbers) == 0 {
 		return responseText // no numbers, safe to proceed
@@ -598,12 +663,25 @@ func (s *TurnSupervisor) ApplyOutputGuardrailFilter(responseText string, trusted
 
 	// Check if each number is present in the trusted source data
 	for _, num := range numbers {
-		// Ignore common tiny counters or standard greetings if they occur
-		if num == "1" || num == "2" || num == "3" || num == "24" || num == "7" {
+		// Clean formatting commas
+		cleanNum := strings.ReplaceAll(num, ",", "")
+		val, err := strconv.ParseFloat(cleanNum, 64)
+		if err != nil {
+			continue // ignore unparseable sequences
+		}
+
+		// Ignore common non-financial constants (0-10), time (24/7/365, etc.)
+		intVal := int(val)
+		if val == float64(intVal) && intVal >= 0 && intVal <= 10 {
 			continue
 		}
-		if !strings.Contains(trustedSourceData, num) {
-			log.Printf("[GUARDRAIL FILTER TRIP] Suppressed response due to unverified value '%s'. Response was: '%s'", num, responseText)
+		if num == "24" || num == "7" || num == "30" || num == "60" || num == "365" || num == "18" {
+			continue
+		}
+
+		// Check float existence in trustedFloats
+		if !trustedFloats[val] {
+			log.Printf("[GUARDRAIL FILTER TRIP] Suppressed response due to unverified numerical value")
 			return "I'm sorry, I don't have that specific information right now. Let me connect you with a representative who can look that up for you."
 		}
 	}
@@ -685,4 +763,44 @@ func (s *TurnSupervisor) LogConversationTurn(ctx context.Context, userID, sessio
 			log.Printf("[Cassandra Success] Recorded turn %d (%s) for session %s", seq, role, sessionID)
 		}
 	}()
+}
+
+// formatLLMResponse utilizes the LLM to write a friendly customer-facing verbal response from the raw bank data.
+func (s *TurnSupervisor) formatLLMResponse(ctx context.Context, query string, mcpRes string) (string, error) {
+	systemPrompt := "You are a friendly customer service agent for a retail bank. Formulate a natural, concise verbal response to the customer based ONLY on the provided raw bank data. Speak in friendly, conversational, short sentences. For transaction lists, use ordinals like First, Second, etc. and avoid robotic signs like plus/minus. Translate negative/positive values to friendly descriptions (e.g. 'spent 150' instead of '-150')."
+	
+	promptText := fmt.Sprintf("Customer query: %s\nRaw bank data: %s\nFormulate the response:", query, mcpRes)
+	
+	messages := []ollama.ChatMessage{
+		{Role: "system", Content: systemPrompt},
+		{Role: "user", Content: promptText},
+	}
+	
+	responseChan := make(chan string, 10)
+	go func() {
+		_, _ = s.Ollama.Chat(ctx, messages, true, responseChan)
+	}()
+	
+	var llmResponse strings.Builder
+	for token := range responseChan {
+		llmResponse.WriteString(token)
+	}
+	return llmResponse.String(), nil
+}
+
+// cleanJSONResponse extracts the JSON block from an LLM output, removing any markdown code fences or conversational prefixes.
+func cleanJSONResponse(input string) string {
+	input = strings.TrimSpace(input)
+	// Remove markdown code fences if present
+	input = strings.TrimPrefix(input, "```json")
+	input = strings.TrimPrefix(input, "```")
+	input = strings.TrimSuffix(input, "```")
+	input = strings.TrimSpace(input)
+
+	firstBrace := strings.Index(input, "{")
+	lastBrace := strings.LastIndex(input, "}")
+	if firstBrace != -1 && lastBrace != -1 && lastBrace > firstBrace {
+		return input[firstBrace : lastBrace+1]
+	}
+	return input
 }

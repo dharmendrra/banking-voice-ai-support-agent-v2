@@ -1,3 +1,5 @@
+# NOTE: All database and backend service images below support native linux/arm64.
+# Rosetta 2 emulation is NOT required on Apple Silicon.
 services:
   qdrant:
     image: qdrant/qdrant:latest
@@ -64,6 +66,8 @@ services:
       - QDRANT_URL=http://voice_agent_qdrant_v2:6333
       - CASSANDRA_HOSTS=cassandra
       - OLLAMA_URL=http://host.docker.internal:11434
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://host.docker.internal:4317
+      - OTEL_LOGS_EXPORTER=otlp
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
@@ -83,16 +87,20 @@ services:
     command: ["./media-engine"]
     environment:
       - ORCHESTRATOR_URL=http://llm-orchestrator-server:9083
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://host.docker.internal:4317
+      - OTEL_LOGS_EXPORTER=otlp
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       llm-orchestrator-server:
-        condition: any
+        condition: service_started
       livekit:
         condition: service_healthy
     deploy:
       replicas: 3
 
   livekit:
-    image: livekit/livekit:latest
+    image: livekit/livekit-server:latest
     container_name: voice_agent_livekit_v2
     command: --dev --config /etc/livekit.yaml
     ports:
@@ -106,6 +114,17 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
+
+#   kokoro-tts:
+#     image: ghcr.io/remsky/kokoro-fastapi-cpu:latest
+#     container_name: voice_agent_kokoro_v2
+#     ports:
+#       - "8880:8880"
+#     healthcheck:
+#       test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8880/docs')"]
+#       interval: 5s
+#       timeout: 3s
+#       retries: 5
 
   lb:
     image: nginx:alpine

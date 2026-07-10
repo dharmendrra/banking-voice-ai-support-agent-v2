@@ -61,7 +61,11 @@ type MediaEngineServer struct {
 func main() {
 	log.Println("Starting Standalone Media Engine Service...")
 
-	tShutdown, _ := telemetry.Init(context.Background(), "media-engine")
+	// Initialize OpenTelemetry stack (fail-fast if the OTLP collector is down/offline)
+	tShutdown, _, err := telemetry.Init(context.Background(), "media-engine")
+	if err != nil {
+		log.Fatalf("Fatal: Telemetry initialization failed (observability endpoint is down): %v", err)
+	}
 	defer func() { _ = tShutdown(context.Background()) }()
 	log.Printf("[Telemetry] Telemetry enabled: %t", telemetry.Enabled())
 	initMediaMetrics()
@@ -72,7 +76,7 @@ func main() {
 	srv := &MediaEngineServer{
 		OrchestratorURL: orchestratorURL,
 		HTTPClient: &http.Client{
-			Timeout: 10 * time.Second,
+			Timeout: 60 * time.Second,
 			// otelhttp transport: client spans + W3C trace-context propagation so
 			// each /api/final is one end-to-end trace (media -> orchestrator).
 			Transport: otelhttp.NewTransport(http.DefaultTransport),
@@ -173,6 +177,24 @@ func (s *MediaEngineServer) handleWebSocket(w http.ResponseWriter, r *http.Reque
 			// Forward config to orchestrator
 			go s.forwardConfig(msg.Payload)
 
+		case "client_log":
+			payload, ok := msg.Payload.(map[string]any)
+			if ok {
+				level, _ := payload["level"].(string)
+				event, _ := payload["event"].(string)
+				message, _ := payload["message"].(string)
+
+				clientLogger := telemetry.Logger("client-browser")
+				switch level {
+				case "error":
+					clientLogger.ErrorContext(r.Context(), event, "message", message, "session_id", sessionID)
+				case "warn":
+					clientLogger.WarnContext(r.Context(), event, "message", message, "session_id", sessionID)
+				default:
+					clientLogger.InfoContext(r.Context(), event, "message", message, "session_id", sessionID)
+				}
+			}
+
 		case "partial_transcript":
 			// Post partial transcript to orchestrator
 			go func(m ClientWSMessage) {
@@ -249,6 +271,8 @@ func (s *MediaEngineServer) handleWebSocket(w http.ResponseWriter, r *http.Reque
 				msgType := "agent_speech"
 				if pathType == "confirm_required" {
 					msgType = "confirmation_required"
+				} else if pathType == "resume_playback" {
+					msgType = "resume_playback"
 				}
 
 				_ = ws.WriteJSON(map[string]any{
