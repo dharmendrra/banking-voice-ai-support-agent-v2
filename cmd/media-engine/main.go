@@ -330,7 +330,7 @@ func (s *MediaEngineServer) handleLiveKitToken(w http.ResponseWriter, r *http.Re
 		RoomJoin: true,
 		Room:     room,
 	}
-	at.SetVideoGrant(grant)
+	at.AddGrant(grant)
 	at.SetIdentity(identity)
 	at.SetValidFor(2 * time.Hour)
 
