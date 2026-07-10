@@ -1095,7 +1095,15 @@
                 try {
                     recognition.start();
                 } catch (e) {
-                    console.warn("[STT] Failed to auto-resume recognition:", e);
+                    console.warn("[STT] Failed to auto-resume recognition:", e.message);
+                    if (e.message && e.message.toLowerCase().includes("already started")) {
+                        // If browser is already listening, synchronize our state variables
+                        isListening = true;
+                        wsIndicator.className = 'status-indicator listening';
+                        micCircleOuter.className = 'voice-circle-outer listening';
+                        micBtn.className = 'voice-circle-inner listening';
+                        visualWaveform.className = 'waveform active';
+                    }
                 }
             }
         }
@@ -1180,8 +1188,8 @@
                 micBtn.className = 'voice-circle-inner';
                 visualWaveform.className = 'waveform';
 
-                // Only auto-restart when agent is NOT speaking — prevents mic from picking up TTS output
-                if (shouldBeListening && !isTTSPlaying) {
+                // Auto-restart if we are in active voice mode (continuous listening / barge-in support)
+                if (shouldBeListening) {
                     try {
                         console.log("[STT] Auto-restarting speech recognition...");
                         recognition.start();
@@ -1445,6 +1453,7 @@
         let audioQueue = [];
         let isPlayingQueue = false;
         let currentlyPlayingItem = null;
+        let activeUtterance = null; // Prevent native speechSynthesis GC
 
         // Web Speech API TTS (Fallback for chunks)
         function speakNativeTTSChunk(text, isHindi, playId) {
@@ -1455,6 +1464,7 @@
             }
             if ('speechSynthesis' in window) {
                 const utterance = new SpeechSynthesisUtterance(text);
+                activeUtterance = utterance; // Prevent garbage collection!
                 utterance.rate = 1.05; // Slightly faster for natural banking flow
                 utterance.pitch = 1.0;
                 
@@ -1743,6 +1753,14 @@
                 }));
             }
         });
+
+        // STT Watchdog: checks every 2 seconds to recover from silent Chrome STT drops
+        setInterval(() => {
+            if (shouldBeListening && !isListening && !isHalted) {
+                console.log("[STT Watchdog] Detected microphone silent stop. Resurrecting...");
+                resumeSpeechIfNeeded();
+            }
+        }, 2000);
 
         // Boot
         connectWebSocket();
