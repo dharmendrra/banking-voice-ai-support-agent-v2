@@ -84,9 +84,28 @@ services:
     environment:
       - ORCHESTRATOR_URL=http://llm-orchestrator-server:9083
     depends_on:
-      - llm-orchestrator-server
+      llm-orchestrator-server:
+        condition: any
+      livekit:
+        condition: service_healthy
     deploy:
       replicas: 3
+
+  livekit:
+    image: livekit/livekit:latest
+    container_name: voice_agent_livekit_v2
+    command: --dev --config /etc/livekit.yaml
+    ports:
+      - "7880:7880"
+      - "7881:7881"
+      - "7882:7882/udp"
+    volumes:
+      - ./livekit.yaml:/etc/livekit.yaml
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "7880"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
 
   lb:
     image: nginx:alpine

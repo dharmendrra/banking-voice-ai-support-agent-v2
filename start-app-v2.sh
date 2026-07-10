@@ -127,8 +127,9 @@ echo -e "${BLUE}Waiting for database health checks to pass...${NC}"
 until [ "$(docker inspect --format='{{json .State.Health.Status}}' voice_agent_mongodb_v2)" == "\"healthy\"" ] && \
       [ "$(docker inspect --format='{{json .State.Health.Status}}' voice_agent_redis_v2)" == "\"healthy\"" ] && \
       [ "$(docker inspect --format='{{json .State.Health.Status}}' voice_agent_qdrant_v2)" == "\"healthy\"" ] && \
-      [ "$(docker inspect --format='{{json .State.Health.Status}}' voice_agent_cassandra_v2)" == "\"healthy\"" ]; do
-    echo -e "${YELLOW}Still waiting for DB health checks (Qdrant, Redis, MongoDB, Cassandra)...${NC}"
+      [ "$(docker inspect --format='{{json .State.Health.Status}}' voice_agent_cassandra_v2)" == "\"healthy\"" ] && \
+      [ "$(docker inspect --format='{{json .State.Health.Status}}' voice_agent_livekit_v2)" == "\"healthy\"" ]; do
+    echo -e "${YELLOW}Still waiting for DB and Gateway health checks (Qdrant, Redis, MongoDB, Cassandra, LiveKit)...${NC}"
     sleep 3
 done
 echo -e "${GREEN}✓ Databases are healthy and ready.${NC}"

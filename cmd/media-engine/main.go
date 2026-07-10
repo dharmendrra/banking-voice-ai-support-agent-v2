@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/livekit/protocol/auth"
 )
 
 var upgrader = websocket.Upgrader{
@@ -63,6 +64,9 @@ func main() {
 
 	// Proxy bank-data queries to the Orchestrator
 	mux.HandleFunc("/api/bank-data", srv.handleBankDataProxy)
+
+	// LiveKit token generator for WebRTC clients
+	mux.HandleFunc("/api/token", srv.handleLiveKitToken)
 
 	// WebSocket handler for client voice transcripts
 	mux.HandleFunc("/ws", srv.handleWebSocket)
@@ -308,6 +312,38 @@ func (s *MediaEngineServer) fetchAndSendBankData(ws *websocket.Conn) {
 			"payload": data,
 		})
 	}
+}
+
+func (s *MediaEngineServer) handleLiveKitToken(w http.ResponseWriter, r *http.Request) {
+	room := r.URL.Query().Get("room")
+	identity := r.URL.Query().Get("identity")
+	if room == "" || identity == "" {
+		http.Error(w, "missing room or identity parameters", http.StatusBadRequest)
+		return
+	}
+
+	apiKey := "devkey"
+	apiSecret := "secretkey"
+
+	at := auth.NewAccessToken(apiKey, apiSecret)
+	grant := &auth.VideoGrant{
+		RoomJoin: true,
+		Room:     room,
+	}
+	at.SetVideoGrant(grant)
+	at.SetIdentity(identity)
+	at.SetValidFor(2 * time.Hour)
+
+	token, err := at.ToJWT()
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to generate token: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]string{
+		"token": token,
+	})
 }
 
 func getEnv(key, fallback string) string {
