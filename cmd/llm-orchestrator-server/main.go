@@ -17,6 +17,9 @@ import (
 	"banking-voice-ai-agent/internal/mcp"
 	"banking-voice-ai-agent/internal/ollama"
 	"banking-voice-ai-agent/internal/llm-orchestrator-server"
+	"banking-voice-ai-agent/internal/telemetry"
+
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
 type OrchestratorServer struct {
@@ -35,6 +38,11 @@ type OrchestratorServer struct {
 
 func main() {
 	log.Println("Starting Standalone LLM Orchestrator Server...")
+
+	// Initialize OpenTelemetry stack (no-op unless OTEL_EXPORTER_OTLP_ENDPOINT is set)
+	tShutdown, _ := telemetry.Init(context.Background(), "llm-orchestrator-server")
+	defer func() { _ = tShutdown(context.Background()) }()
+	log.Printf("[Telemetry] Telemetry enabled: %t", telemetry.Enabled())
 
 	mongoURI := getEnv("MONGO_URI", "mongodb://localhost:27017")
 	redisAddr := getEnv("REDIS_ADDR", "localhost:6379")
@@ -89,11 +97,11 @@ func main() {
 	}
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("/api/partial", srv.handlePartial)
-	mux.HandleFunc("/api/final", srv.handleFinal)
-	mux.HandleFunc("/api/confirmation", srv.handleConfirmation)
-	mux.HandleFunc("/api/bank-data", srv.handleBankData)
-	mux.HandleFunc("/api/config", srv.handleConfig)
+	mux.Handle("/api/partial", otelhttp.NewHandler(http.HandlerFunc(srv.handlePartial), "partial"))
+	mux.Handle("/api/final", otelhttp.NewHandler(http.HandlerFunc(srv.handleFinal), "final"))
+	mux.Handle("/api/confirmation", otelhttp.NewHandler(http.HandlerFunc(srv.handleConfirmation), "confirmation"))
+	mux.Handle("/api/bank-data", otelhttp.NewHandler(http.HandlerFunc(srv.handleBankData), "bank-data"))
+	mux.Handle("/api/config", otelhttp.NewHandler(http.HandlerFunc(srv.handleConfig), "config"))
 
 	server := &http.Server{
 		Addr:    ":9083",

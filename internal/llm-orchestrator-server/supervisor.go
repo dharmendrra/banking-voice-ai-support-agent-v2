@@ -14,6 +14,10 @@ import (
 	"banking-voice-ai-agent/internal/db"
 	"banking-voice-ai-agent/internal/mcp"
 	"banking-voice-ai-agent/internal/ollama"
+	"banking-voice-ai-agent/internal/telemetry"
+
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 type SessionState string
@@ -216,6 +220,15 @@ func (s *TurnSupervisor) HandleFinalTranscript(ctx context.Context, turnID strin
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	// Start OTel turn span
+	ctx, span := telemetry.Tracer("orchestrator").Start(ctx, "turn",
+		trace.WithAttributes(
+			attribute.String("turn_id", turnID),
+			attribute.String("session_id", sessionID),
+			attribute.String("user_id", userID),
+		))
+	defer span.End()
+
 	log.Printf("[Supervisor] Handling final transcript: '%s' (intercepted: %t)", finalTranscript, intercepted)
 
 	// Fetch conversation history from Redis
@@ -302,6 +315,7 @@ func (s *TurnSupervisor) HandleFinalTranscript(ctx context.Context, turnID strin
 			"score":          actionMatches[0].Score,
 		})
 
+		recordTurn(ctx, "action")
 		return s.executeCommitPath(ctx, turnID, sessionID, userID, payload, finalTranscript, history)
 	}
 
@@ -317,6 +331,7 @@ func (s *TurnSupervisor) HandleFinalTranscript(ctx context.Context, turnID strin
 			"score":          faqMatches[0].Score,
 		})
 
+		recordTurn(ctx, "faq")
 		// FAQs are static and safe. No private info is contained, so it passes guardrails.
 		return "text", answer, nil
 	}
@@ -326,6 +341,8 @@ func (s *TurnSupervisor) HandleFinalTranscript(ctx context.Context, turnID strin
 		"turn_id": turnID,
 		"path":    "llm",
 	})
+
+	recordTurn(ctx, "llm")
 
 	if s.WarmingEnabled {
 		s.LogEvent(ctx, turnID, "warm_outcome", map[string]any{
