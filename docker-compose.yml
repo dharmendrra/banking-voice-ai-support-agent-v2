@@ -66,7 +66,7 @@ services:
       - QDRANT_URL=http://voice_agent_qdrant_v2:6333
       - CASSANDRA_HOSTS=cassandra
       - OLLAMA_URL=http://host.docker.internal:11434
-      - CHAT_MODEL=qwen3.6:35b
+      - CHAT_MODEL=gemma4:e4b
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://host.docker.internal:4317
       - OTEL_LOGS_EXPORTER=otlp
     extra_hosts:
