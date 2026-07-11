@@ -614,11 +614,6 @@ func (s *TurnSupervisor) runLLMDeflector(ctx context.Context, sessionID string, 
 	var messages []ollama.ChatMessage
 	messages = append(messages, ollama.ChatMessage{Role: "system", Content: systemPrompt})
 
-	// Add recent N turns of history (up to last 4 messages to stay quick and keep cache hit high)
-	maxHistory := 4
-	if len(history) > maxHistory {
-		history = history[len(history)-maxHistory:]
-	}
 	messages = append(messages, history...)
 	messages = append(messages, ollama.ChatMessage{Role: "user", Content: query})
 
