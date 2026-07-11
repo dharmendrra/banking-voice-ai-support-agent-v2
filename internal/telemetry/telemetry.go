@@ -146,12 +146,12 @@ func (s *loggingSpan) End(options ...trace.SpanEndOption) {
 		Message:             s.name,
 		Logger:              "app",
 		Duration:            duration.String(),
-		DurationMS:          duration.Milliseconds(),
+		DurationMS:          float64(duration.Nanoseconds()) / 1e6,
 		PostSpeechLatencyMS: 0,
 	}
 
 	if s.name == "media.final_transcript" || s.name == "media.confirmation" {
-		logRecord.PostSpeechLatencyMS = duration.Milliseconds()
+		logRecord.PostSpeechLatencyMS = float64(duration.Nanoseconds()) / 1e6
 	}
 
 	if spanContext.IsValid() {

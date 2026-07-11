@@ -19,9 +19,9 @@ type StructuredLog struct {
 	SpanID  string `json:"span_id,omitempty"`
 
 	// Execution Metrics
-	Duration             string `json:"duration,omitempty"`              // e.g. "3.51ms", "2.14s"
-	DurationMS           int64  `json:"duration_ms,omitempty"`           // Raw milliseconds for aggregation
-	PostSpeechLatencyMS  int64  `json:"post_speech_latency_ms,omitempty"` // User end-of-speech to agent response latency
+	Duration             string  `json:"duration,omitempty"`              // e.g. "3.51ms", "2.14s"
+	DurationMS           float64 `json:"duration_ms,omitempty"`           // Raw milliseconds for aggregation
+	PostSpeechLatencyMS  float64 `json:"post_speech_latency_ms,omitempty"` // User end-of-speech to agent response latency
 
 	// Context Metadata
 	SessionID string `json:"session_id,omitempty"`
@@ -77,10 +77,10 @@ func (l StructuredLog) LogValue() slog.Value {
 		attrs = append(attrs, slog.String("duration", l.Duration))
 	}
 	if l.DurationMS != 0 {
-		attrs = append(attrs, slog.Int64("duration_ms", l.DurationMS))
+		attrs = append(attrs, slog.Float64("duration_ms", l.DurationMS))
 	}
 	if l.PostSpeechLatencyMS != 0 {
-		attrs = append(attrs, slog.Int64("post_speech_latency_ms", l.PostSpeechLatencyMS))
+		attrs = append(attrs, slog.Float64("post_speech_latency_ms", l.PostSpeechLatencyMS))
 	}
 	if l.SessionID != "" {
 		attrs = append(attrs, slog.String("session_id", l.SessionID))
@@ -143,10 +143,10 @@ func (l StructuredLog) SlogArgs() []any {
 		args = append(args, slog.String("duration", l.Duration))
 	}
 	if l.DurationMS != 0 {
-		args = append(args, slog.Int64("duration_ms", l.DurationMS))
+		args = append(args, slog.Float64("duration_ms", l.DurationMS))
 	}
 	if l.PostSpeechLatencyMS != 0 {
-		args = append(args, slog.Int64("post_speech_latency_ms", l.PostSpeechLatencyMS))
+		args = append(args, slog.Float64("post_speech_latency_ms", l.PostSpeechLatencyMS))
 	}
 	if l.SessionID != "" {
 		args = append(args, slog.String("session_id", l.SessionID))

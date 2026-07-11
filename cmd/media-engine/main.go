@@ -314,7 +314,7 @@ func (s *MediaEngineServer) handleWebSocket(w http.ResponseWriter, r *http.Reque
 					if err := json.Unmarshal(line, &chunk); err == nil {
 						chunkType, _ := chunk["type"].(string)
 						if chunkType == "final" {
-							elapsedMs := time.Since(startProcessTime).Milliseconds()
+							elapsedMs := float64(time.Since(startProcessTime).Nanoseconds()) / 1e6
 							pathType, _ := chunk["path"].(string)
 							replyText, _ := chunk["text"].(string)
 							tokensCount, _ := chunk["tokens_count"].(float64)
@@ -330,7 +330,7 @@ func (s *MediaEngineServer) handleWebSocket(w http.ResponseWriter, r *http.Reque
 							_ = ws.WriteJSON(map[string]any{
 								"type":       msgType,
 								"text":       stripEmojis(replyText),
-								"latency_ms": elapsedMs,
+								"latency_ms": int64(elapsedMs),
 							})
 							
 							logRecord := telemetry.StructuredLog{
@@ -338,7 +338,7 @@ func (s *MediaEngineServer) handleWebSocket(w http.ResponseWriter, r *http.Reque
 								Level:               "INFO",
 								Message:             "WebSocket turn completed",
 								Logger:              "media-engine",
-								Duration:            fmt.Sprintf("%dms", elapsedMs),
+								Duration:            fmt.Sprintf("%.2fms", elapsedMs),
 								DurationMS:          elapsedMs,
 								PostSpeechLatencyMS: elapsedMs,
 								SessionID:           sessionID,
@@ -416,13 +416,13 @@ func (s *MediaEngineServer) handleWebSocket(w http.ResponseWriter, r *http.Reque
 
 				var res map[string]any
 				if err := json.NewDecoder(resp.Body).Decode(&res); err == nil {
-					elapsedMs := time.Since(startProcessTime).Milliseconds()
+					elapsedMs := float64(time.Since(startProcessTime).Nanoseconds()) / 1e6
 					replyText, _ := res["text"].(string)
 
 					_ = ws.WriteJSON(map[string]any{
 						"type":       "agent_speech",
 						"text":       stripEmojis(replyText),
-						"latency_ms": elapsedMs,
+						"latency_ms": int64(elapsedMs),
 					})
 					
 					logRecord := telemetry.StructuredLog{
@@ -430,7 +430,7 @@ func (s *MediaEngineServer) handleWebSocket(w http.ResponseWriter, r *http.Reque
 						Level:               "INFO",
 						Message:             "WebSocket confirmation completed",
 						Logger:              "media-engine",
-						Duration:            fmt.Sprintf("%dms", elapsedMs),
+						Duration:            fmt.Sprintf("%.2fms", elapsedMs),
 						DurationMS:          elapsedMs,
 						PostSpeechLatencyMS: elapsedMs,
 						SessionID:           sessionID,

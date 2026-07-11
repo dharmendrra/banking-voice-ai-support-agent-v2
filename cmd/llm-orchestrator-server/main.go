@@ -388,11 +388,11 @@ func withLogging(next http.Handler) http.Handler {
 			Message:     "HTTP request completed",
 			Logger:      "http",
 			Duration:    duration.String(),
-			DurationMS:  duration.Milliseconds(),
+			DurationMS:  float64(duration.Nanoseconds()) / 1e6,
 			DBSystem:    r.Method,
 			DBOperation: r.URL.Path,
 		}
 		
-		telemetry.Logger("http").InfoContext(r.Context(), "http_request", slog.Any("details", logRecord))
+		telemetry.Logger("http").InfoContext(r.Context(), "http_request", logRecord.SlogArgs()...)
 	})
 }
