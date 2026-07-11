@@ -328,7 +328,7 @@ func (s *MediaEngineServer) handleWebSocket(w http.ResponseWriter, r *http.Reque
 
 						_ = ws.WriteJSON(map[string]any{
 							"type":       msgType,
-							"text":       replyText,
+							"text":       stripEmojis(replyText),
 							"latency_ms": elapsedMs,
 						})
 						
@@ -372,6 +372,11 @@ func (s *MediaEngineServer) handleWebSocket(w http.ResponseWriter, r *http.Reque
 						s.fetchAndSendBankData(ws, userID)
 					} else {
 						// Forward the intermediate chunks (thought, speech) directly to WebSocket
+						if chunkType, ok := chunk["type"].(string); ok && chunkType == "speech" {
+							if text, ok := chunk["text"].(string); ok {
+								chunk["text"] = stripEmojis(text)
+							}
+						}
 						_ = ws.WriteJSON(chunk)
 					}
 				}
@@ -413,7 +418,7 @@ func (s *MediaEngineServer) handleWebSocket(w http.ResponseWriter, r *http.Reque
 
 				_ = ws.WriteJSON(map[string]any{
 					"type":       "agent_speech",
-					"text":       replyText,
+					"text":       stripEmojis(replyText),
 					"latency_ms": elapsedMs,
 				})
 				
@@ -512,4 +517,16 @@ func getEnv(key, fallback string) string {
 		return value
 	}
 	return fallback
+}
+
+func stripEmojis(s string) string {
+	var sb strings.Builder
+	for _, r := range s {
+		// Filter out standard emojis (0x1F000 to 0x1F9FF) and dingbats/symbols (0x2600 to 0x27BF)
+		if (r >= 0x1F000 && r <= 0x1F9FF) || (r >= 0x2600 && r <= 0x27BF) {
+			continue
+		}
+		sb.WriteRune(r)
+	}
+	return strings.TrimSpace(sb.String())
 }
