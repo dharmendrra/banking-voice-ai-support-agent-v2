@@ -112,8 +112,8 @@ func (c *Client) Chat(ctx context.Context, messages []ChatMessage, stream bool, 
 		Messages: messages,
 		Stream:   stream,
 		Options: map[string]any{
-			"num_predict": 128, // Limit generation length for speed
-			"temperature": 0.0, // Low temp for reliable banking deflections
+			"num_predict": 1024, // Limit generation length for speed (expanded for thinking models)
+			"temperature": 0.0,  // Low temp for reliable banking deflections
 		},
 	})
 	if err != nil {
