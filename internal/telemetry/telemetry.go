@@ -125,8 +125,32 @@ func Logger(name string) *slog.Logger {
 	return otelslog.NewLogger(name)
 }
 
-// Step starts a span AND emits a trace-correlated log line for the same step,
-// so every execution shows up in both Tempo (traces) and Loki (logs).
+type loggingSpan struct {
+	trace.Span
+	ctx   context.Context
+	name  string
+	attrs []attribute.KeyValue
+	start time.Time
+}
+
+func (s *loggingSpan) End(options ...trace.SpanEndOption) {
+	duration := time.Since(s.start)
+	s.Span.SetAttributes(attribute.String("duration", duration.String()))
+	s.Span.End(options...)
+
+	// Convert otel attributes to slog fields
+	var slogArgs []any
+	for _, attr := range s.attrs {
+		slogArgs = append(slogArgs, slog.Any(string(attr.Key), attr.Value.AsInterface()))
+	}
+	slogArgs = append(slogArgs, slog.String("duration", duration.String()))
+	slogArgs = append(slogArgs, slog.Int64("duration_ms", duration.Milliseconds()))
+	
+	Logger("app").InfoContext(s.ctx, s.name, slogArgs...)
+}
+
+// Step starts a span AND returns a trace.Span. When End() is called on the span,
+// it emits a trace-correlated log line containing the final duration.
 func Step(ctx context.Context, name string, attrs ...attribute.KeyValue) (context.Context, trace.Span) {
 	var spanOpts []trace.SpanStartOption
 	if len(attrs) > 0 {
@@ -134,13 +158,15 @@ func Step(ctx context.Context, name string, attrs ...attribute.KeyValue) (contex
 	}
 	ctx, span := otel.Tracer("app").Start(ctx, name, spanOpts...)
 
-	// Convert otel attributes to slog fields
-	var slogArgs []any
-	for _, attr := range attrs {
-		slogArgs = append(slogArgs, slog.Any(string(attr.Key), attr.Value.AsInterface()))
+	lSpan := &loggingSpan{
+		Span:  span,
+		ctx:   ctx,
+		name:  name,
+		attrs: attrs,
+		start: time.Now(),
 	}
-	Logger("app").InfoContext(ctx, name, slogArgs...)
-	return ctx, span
+
+	return ctx, lSpan
 }
 
 // Tracer returns a named tracer from the global provider.

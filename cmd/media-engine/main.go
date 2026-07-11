@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -64,11 +65,12 @@ func main() {
 	log.Println("Starting Standalone Media Engine Service...")
 
 	// Initialize OpenTelemetry stack (fail-fast if the OTLP collector is down/offline)
-	tShutdown, _, err := telemetry.Init(context.Background(), "media-engine")
+	tShutdown, logger, err := telemetry.Init(context.Background(), "media-engine")
 	if err != nil {
 		log.Fatalf("Fatal: Telemetry initialization failed (observability endpoint is down): %v", err)
 	}
 	defer func() { _ = tShutdown(context.Background()) }()
+	slog.SetDefault(logger)
 	log.Printf("[Telemetry] Telemetry enabled: %t", telemetry.Enabled())
 	initMediaMetrics()
 
@@ -322,6 +324,7 @@ func (s *MediaEngineServer) handleWebSocket(w http.ResponseWriter, r *http.Reque
 							"text":       replyText,
 							"latency_ms": elapsedMs,
 						})
+						log.Printf("[MediaEngine Turn Latency] session_id: %s, turn_id: %s, latency: %dms, path: %s", sessionID, msg.TurnID, elapsedMs, pathType)
 
 						// Send logs back to frontend UI
 						_ = ws.WriteJSON(map[string]any{
@@ -392,6 +395,7 @@ func (s *MediaEngineServer) handleWebSocket(w http.ResponseWriter, r *http.Reque
 					"text":       replyText,
 					"latency_ms": elapsedMs,
 				})
+				log.Printf("[MediaEngine Confirmation Latency] session_id: %s, turn_id: %s, latency: %dms", sessionID, msg.TurnID, elapsedMs)
 
 				_ = ws.WriteJSON(map[string]any{
 					"type":  "log_event",

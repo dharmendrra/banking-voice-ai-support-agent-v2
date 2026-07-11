@@ -244,7 +244,12 @@ func (s *TurnSupervisor) HandleStablePartial(ctx context.Context, turnID string,
 }
 
 // HandleFinalTranscript executes the final dispatch logic: action > FAQ > LLM.
-func (s *TurnSupervisor) HandleFinalTranscript(ctx context.Context, turnID string, sessionID string, userID string, finalTranscript string, intercepted bool, interceptedPayload map[string]any, onChunk func(eventType string, text string)) (string, string, error) {
+func (s *TurnSupervisor) HandleFinalTranscript(ctx context.Context, turnID string, sessionID string, userID string, finalTranscript string, intercepted bool, interceptedPayload map[string]any, onChunk func(eventType string, text string)) (path string, text string, err error) {
+	startTime := time.Now()
+	defer func() {
+		log.Printf("[Supervisor Turn Latency] turn_id: %s, duration: %v, path: %s", turnID, time.Since(startTime), path)
+	}()
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 

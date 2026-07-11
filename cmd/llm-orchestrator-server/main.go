@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -40,11 +41,12 @@ func main() {
 	log.Println("Starting Standalone LLM Orchestrator Server...")
 
 	// Initialize OpenTelemetry stack (fail-fast if the OTLP collector is down/offline)
-	tShutdown, _, err := telemetry.Init(context.Background(), "llm-orchestrator-server")
+	tShutdown, logger, err := telemetry.Init(context.Background(), "llm-orchestrator-server")
 	if err != nil {
 		log.Fatalf("Fatal: Telemetry initialization failed (observability endpoint is down): %v", err)
 	}
 	defer func() { _ = tShutdown(context.Background()) }()
+	slog.SetDefault(logger)
 	log.Printf("[Telemetry] Telemetry enabled: %t", telemetry.Enabled())
 
 	mongoURI := getEnv("MONGO_URI", "mongodb://localhost:27017")
@@ -108,7 +110,7 @@ func main() {
 
 	server := &http.Server{
 		Addr:    ":9083",
-		Handler: mux,
+		Handler: withLogging(mux),
 	}
 
 	go func() {
@@ -361,4 +363,12 @@ func getEnv(key, fallback string) string {
 		return value
 	}
 	return fallback
+}
+
+func withLogging(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		next.ServeHTTP(w, r)
+		log.Printf("[Orchestrator HTTP] %s %s took %v", r.Method, r.URL.Path, time.Since(start))
+	})
 }
