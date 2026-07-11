@@ -263,191 +263,195 @@ func (s *MediaEngineServer) handleWebSocket(w http.ResponseWriter, r *http.Reque
 			}(msg)
 
 		case "final_transcript":
-			ctx, span := telemetry.Step(r.Context(), "media.final_transcript",
-				attribute.String("media.session_id", sessionID),
-				attribute.String("media.turn_id", msg.TurnID),
-			)
-			defer span.End()
+			func() {
+				ctx, span := telemetry.Step(r.Context(), "media.final_transcript",
+					attribute.String("media.session_id", sessionID),
+					attribute.String("media.turn_id", msg.TurnID),
+				)
+				defer span.End()
 
-			startProcessTime := time.Now()
+				startProcessTime := time.Now()
 
-			reqBody, _ := json.Marshal(map[string]string{
-				"session_id": sessionID,
-				"turn_id":    msg.TurnID,
-				"text":       msg.Text,
-				"user_id":    userID,
-			})
-			req, err := http.NewRequestWithContext(ctx, "POST", s.OrchestratorURL+"/api/final", bytes.NewBuffer(reqBody))
-			if err != nil {
-				log.Printf("Error creating final request: %v", err)
-				_ = ws.WriteJSON(map[string]any{
-					"type": "agent_speech",
-					"text": "I'm sorry, I'm having trouble connecting to my backend service. Let me find a representative.",
+				reqBody, _ := json.Marshal(map[string]string{
+					"session_id": sessionID,
+					"turn_id":    msg.TurnID,
+					"text":       msg.Text,
+					"user_id":    userID,
 				})
-				continue
-			}
-			req.Header.Set("Content-Type", "application/json")
-			resp, err := s.HTTPClient.Do(req)
-			if err != nil {
-				log.Printf("Error sending final transcript: %v", err)
-				_ = ws.WriteJSON(map[string]any{
-					"type": "agent_speech",
-					"text": "I'm sorry, I'm having trouble connecting to my backend service. Let me find a representative.",
-				})
-				continue
-			}
-			defer resp.Body.Close()
-
-			reader := bufio.NewReader(resp.Body)
-			for {
-				line, err := reader.ReadBytes('\n')
+				req, err := http.NewRequestWithContext(ctx, "POST", s.OrchestratorURL+"/api/final", bytes.NewBuffer(reqBody))
 				if err != nil {
-					if err == io.EOF {
+					log.Printf("Error creating final request: %v", err)
+					_ = ws.WriteJSON(map[string]any{
+						"type": "agent_speech",
+						"text": "I'm sorry, I'm having trouble connecting to my backend service. Let me find a representative.",
+					})
+					return
+				}
+				req.Header.Set("Content-Type", "application/json")
+				resp, err := s.HTTPClient.Do(req)
+				if err != nil {
+					log.Printf("Error sending final transcript: %v", err)
+					_ = ws.WriteJSON(map[string]any{
+						"type": "agent_speech",
+						"text": "I'm sorry, I'm having trouble connecting to my backend service. Let me find a representative.",
+					})
+					return
+				}
+				defer resp.Body.Close()
+
+				reader := bufio.NewReader(resp.Body)
+				for {
+					line, err := reader.ReadBytes('\n')
+					if err != nil {
+						if err == io.EOF {
+							break
+						}
+						log.Printf("Error reading stream chunk: %v", err)
 						break
 					}
-					log.Printf("Error reading stream chunk: %v", err)
-					break
-				}
 
-				var chunk map[string]any
-				if err := json.Unmarshal(line, &chunk); err == nil {
-					chunkType, _ := chunk["type"].(string)
-					if chunkType == "final" {
-						elapsedMs := time.Since(startProcessTime).Milliseconds()
-						pathType, _ := chunk["path"].(string)
-						replyText, _ := chunk["text"].(string)
-						tokensCount, _ := chunk["tokens_count"].(float64)
-						warmingEnabled, _ := chunk["warming_enabled"].(bool)
+					var chunk map[string]any
+					if err := json.Unmarshal(line, &chunk); err == nil {
+						chunkType, _ := chunk["type"].(string)
+						if chunkType == "final" {
+							elapsedMs := time.Since(startProcessTime).Milliseconds()
+							pathType, _ := chunk["path"].(string)
+							replyText, _ := chunk["text"].(string)
+							tokensCount, _ := chunk["tokens_count"].(float64)
+							warmingEnabled, _ := chunk["warming_enabled"].(bool)
 
-						msgType := "agent_speech"
-						if pathType == "confirm_required" {
-							msgType = "confirmation_required"
-						} else if pathType == "resume_playback" {
-							msgType = "resume_playback"
-						}
-
-						_ = ws.WriteJSON(map[string]any{
-							"type":       msgType,
-							"text":       stripEmojis(replyText),
-							"latency_ms": elapsedMs,
-						})
-						
-						logRecord := telemetry.StructuredLog{
-							Timestamp:           time.Now(),
-							Level:               "INFO",
-							Message:             "WebSocket turn completed",
-							Logger:              "media-engine",
-							Duration:            fmt.Sprintf("%dms", elapsedMs),
-							DurationMS:          elapsedMs,
-							PostSpeechLatencyMS: elapsedMs,
-							SessionID:           sessionID,
-							TurnID:              msg.TurnID,
-							DBOperation:         pathType,
-						}
-						telemetry.Logger("media-engine").InfoContext(ctx, "websocket_turn", slog.Any("details", logRecord))
-
-						// Send logs back to frontend UI
-						_ = ws.WriteJSON(map[string]any{
-							"type":  "log_event",
-							"event": "dispatch",
-							"payload": map[string]any{
-								"path":           pathType,
-								"matched_intent": pathType,
-								"score":          0.97,
-							},
-						})
-
-						_ = ws.WriteJSON(map[string]any{
-							"type":  "log_event",
-							"event": "warm_outcome",
-							"payload": map[string]any{
-								"prefill_tokens":       int(tokensCount),
-								"used":                 pathType == "llm",
-								"discarded":            pathType != "llm",
-								"would_have_reclaimed": warmingEnabled,
-							},
-						})
-
-						// Send bank update trigger to UI
-						s.fetchAndSendBankData(ws, userID)
-					} else {
-						// Forward the intermediate chunks (thought, speech) directly to WebSocket
-						if chunkType, ok := chunk["type"].(string); ok && chunkType == "speech" {
-							if text, ok := chunk["text"].(string); ok {
-								chunk["text"] = stripEmojis(text)
+							msgType := "agent_speech"
+							if pathType == "confirm_required" {
+								msgType = "confirmation_required"
+							} else if pathType == "resume_playback" {
+								msgType = "resume_playback"
 							}
+
+							_ = ws.WriteJSON(map[string]any{
+								"type":       msgType,
+								"text":       stripEmojis(replyText),
+								"latency_ms": elapsedMs,
+							})
+							
+							logRecord := telemetry.StructuredLog{
+								Timestamp:           time.Now(),
+								Level:               "INFO",
+								Message:             "WebSocket turn completed",
+								Logger:              "media-engine",
+								Duration:            fmt.Sprintf("%dms", elapsedMs),
+								DurationMS:          elapsedMs,
+								PostSpeechLatencyMS: elapsedMs,
+								SessionID:           sessionID,
+								TurnID:              msg.TurnID,
+								DBOperation:         pathType,
+							}
+							telemetry.Logger("media-engine").InfoContext(ctx, "websocket_turn", slog.Any("details", logRecord))
+
+							// Send logs back to frontend UI
+							_ = ws.WriteJSON(map[string]any{
+								"type":  "log_event",
+								"event": "dispatch",
+								"payload": map[string]any{
+									"path":           pathType,
+									"matched_intent": pathType,
+									"score":          0.97,
+								},
+							})
+
+							_ = ws.WriteJSON(map[string]any{
+								"type":  "log_event",
+								"event": "warm_outcome",
+								"payload": map[string]any{
+									"prefill_tokens":       int(tokensCount),
+									"used":                 pathType == "llm",
+									"discarded":            pathType != "llm",
+									"would_have_reclaimed": warmingEnabled,
+								},
+							})
+
+							// Send bank update trigger to UI
+							s.fetchAndSendBankData(ws, userID)
+						} else {
+							// Forward the intermediate chunks (thought, speech) directly to WebSocket
+							if chunkType, ok := chunk["type"].(string); ok && chunkType == "speech" {
+								if text, ok := chunk["text"].(string); ok {
+									chunk["text"] = stripEmojis(text)
+								}
+							}
+							_ = ws.WriteJSON(chunk)
 						}
-						_ = ws.WriteJSON(chunk)
 					}
 				}
-			}
+			}()
 
 		case "confirmation":
-			ctx, span := telemetry.Step(r.Context(), "media.confirmation",
-				attribute.String("media.session_id", sessionID),
-				attribute.String("media.turn_id", msg.TurnID),
-				attribute.String("media.value", msg.Text),
-			)
-			defer span.End()
+			func() {
+				ctx, span := telemetry.Step(r.Context(), "media.confirmation",
+					attribute.String("media.session_id", sessionID),
+					attribute.String("media.turn_id", msg.TurnID),
+					attribute.String("media.value", msg.Text),
+				)
+				defer span.End()
 
-			startProcessTime := time.Now()
+				startProcessTime := time.Now()
 
-			reqBody, _ := json.Marshal(map[string]string{
-				"session_id": sessionID,
-				"turn_id":    msg.TurnID,
-				"text":       msg.Text,
-				"user_id":    userID,
-			})
-			req, err := http.NewRequestWithContext(ctx, "POST", s.OrchestratorURL+"/api/confirmation", bytes.NewBuffer(reqBody))
-			if err != nil {
-				log.Printf("Error creating confirmation request: %v", err)
-				continue
-			}
-			req.Header.Set("Content-Type", "application/json")
-			resp, err := s.HTTPClient.Do(req)
-			if err != nil {
-				log.Printf("Error sending confirmation: %v", err)
-				continue
-			}
-			defer resp.Body.Close()
-
-			var res map[string]any
-			if err := json.NewDecoder(resp.Body).Decode(&res); err == nil {
-				elapsedMs := time.Since(startProcessTime).Milliseconds()
-				replyText, _ := res["text"].(string)
-
-				_ = ws.WriteJSON(map[string]any{
-					"type":       "agent_speech",
-					"text":       stripEmojis(replyText),
-					"latency_ms": elapsedMs,
+				reqBody, _ := json.Marshal(map[string]string{
+					"session_id": sessionID,
+					"turn_id":    msg.TurnID,
+					"text":       msg.Text,
+					"user_id":    userID,
 				})
-				
-				logRecord := telemetry.StructuredLog{
-					Timestamp:           time.Now(),
-					Level:               "INFO",
-					Message:             "WebSocket confirmation completed",
-					Logger:              "media-engine",
-					Duration:            fmt.Sprintf("%dms", elapsedMs),
-					DurationMS:          elapsedMs,
-					PostSpeechLatencyMS: elapsedMs,
-					SessionID:           sessionID,
-					TurnID:              msg.TurnID,
-					DBOperation:         "confirmation",
+				req, err := http.NewRequestWithContext(ctx, "POST", s.OrchestratorURL+"/api/confirmation", bytes.NewBuffer(reqBody))
+				if err != nil {
+					log.Printf("Error creating confirmation request: %v", err)
+					return
 				}
-				telemetry.Logger("media-engine").InfoContext(ctx, "websocket_confirmation", slog.Any("details", logRecord))
+				req.Header.Set("Content-Type", "application/json")
+				resp, err := s.HTTPClient.Do(req)
+				if err != nil {
+					log.Printf("Error sending confirmation: %v", err)
+					return
+				}
+				defer resp.Body.Close()
 
-				_ = ws.WriteJSON(map[string]any{
-					"type":  "log_event",
-					"event": "confirmation_outcome",
-					"payload": map[string]any{
-						"intent":          "transfer",
-						"confirmed":       msg.Text == "yes",
-						"idempotency_key": "IDEMP-CONFIRM-CLICK",
-					},
-				})
+				var res map[string]any
+				if err := json.NewDecoder(resp.Body).Decode(&res); err == nil {
+					elapsedMs := time.Since(startProcessTime).Milliseconds()
+					replyText, _ := res["text"].(string)
 
-				s.fetchAndSendBankData(ws, userID)
-			}
+					_ = ws.WriteJSON(map[string]any{
+						"type":       "agent_speech",
+						"text":       stripEmojis(replyText),
+						"latency_ms": elapsedMs,
+					})
+					
+					logRecord := telemetry.StructuredLog{
+						Timestamp:           time.Now(),
+						Level:               "INFO",
+						Message:             "WebSocket confirmation completed",
+						Logger:              "media-engine",
+						Duration:            fmt.Sprintf("%dms", elapsedMs),
+						DurationMS:          elapsedMs,
+						PostSpeechLatencyMS: elapsedMs,
+						SessionID:           sessionID,
+						TurnID:              msg.TurnID,
+						DBOperation:         "confirmation",
+					}
+					telemetry.Logger("media-engine").InfoContext(ctx, "websocket_confirmation", slog.Any("details", logRecord))
+
+					_ = ws.WriteJSON(map[string]any{
+						"type":  "log_event",
+						"event": "confirmation_outcome",
+						"payload": map[string]any{
+							"intent":          "transfer",
+							"confirmed":       msg.Text == "yes",
+							"idempotency_key": "IDEMP-CONFIRM-CLICK",
+						},
+					})
+
+					s.fetchAndSendBankData(ws, userID)
+				}
+			}()
 		}
 	}
 
