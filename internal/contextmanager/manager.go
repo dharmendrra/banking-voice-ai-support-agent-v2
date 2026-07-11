@@ -121,3 +121,14 @@ func (cm *ContextManager) RedactPII(text string) string {
 
 	return text
 }
+
+// SerializeHistory concatenates all messages in the history into a single space-separated text block.
+// This is used as trusted source data in the output guardrail filters.
+func (cm *ContextManager) SerializeHistory(messages []ollama.ChatMessage) string {
+	var builder strings.Builder
+	for _, msg := range messages {
+		builder.WriteString(msg.Content)
+		builder.WriteString(" ")
+	}
+	return builder.String()
+}
