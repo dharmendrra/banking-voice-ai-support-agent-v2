@@ -30,6 +30,7 @@ type ChatRequest struct {
 	Model    string         `json:"model"`
 	Messages []ChatMessage  `json:"messages"`
 	Stream   bool           `json:"stream"`
+	Think    *bool          `json:"think,omitempty"`
 	Options  map[string]any `json:"options,omitempty"`
 }
 
@@ -107,10 +108,12 @@ func (c *Client) Chat(ctx context.Context, messages []ChatMessage, stream bool, 
 		attribute.Int("ollama.num_messages", len(messages)),
 	)
 	defer span.End()
+	thinkVal := false
 	reqBody, err := json.Marshal(ChatRequest{
 		Model:    c.ChatModel,
 		Messages: messages,
 		Stream:   stream,
+		Think:    &thinkVal,
 		Options: map[string]any{
 			"num_predict": 1024, // Limit generation length for speed (expanded for thinking models)
 			"temperature": 0.0,  // Low temp for reliable banking deflections
