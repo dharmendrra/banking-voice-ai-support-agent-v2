@@ -260,8 +260,12 @@ func (s *TurnSupervisor) HandleFinalTranscript(ctx context.Context, turnID strin
 		log.Printf("Failed to load history from Redis: %v", err)
 	}
 
+	// Determine if we should bypass the cache (short/one-word answers in an active conversation are context-dependent)
+	wordCount := len(strings.Fields(finalTranscript))
+	bypassCache := len(history) > 0 && wordCount < 3
+
 	// 1. Reconcile if we had an early halt
-	if intercepted && interceptedPayload != nil {
+	if !bypassCache && intercepted && interceptedPayload != nil {
 		// Embed final and verify score >= NORMAL
 		emb, err := s.Ollama.GetEmbedding(ctx, finalTranscript)
 		if err == nil {
@@ -301,30 +305,38 @@ func (s *TurnSupervisor) HandleFinalTranscript(ctx context.Context, turnID strin
 	}
 
 	// 2. Standard Dispatch Flow: embed final and search collections
-	emb, err := s.Ollama.GetEmbedding(ctx, finalTranscript)
-	if err != nil {
-		return "", "", fmt.Errorf("failed to embed final transcript: %w", err)
-	}
-
 	var actionMatches, faqMatches []db.QdrantMatch
-	var wg sync.WaitGroup
-	wg.Add(2)
-
-	go func() {
-		defer wg.Done()
-		if res, err := s.Qdrant.Search(ctx, "action_intents", emb, 1); err == nil {
-			actionMatches = res
+	if !bypassCache {
+		emb, err := s.Ollama.GetEmbedding(ctx, finalTranscript)
+		if err != nil {
+			return "", "", fmt.Errorf("failed to embed final transcript: %w", err)
 		}
-	}()
 
-	go func() {
-		defer wg.Done()
-		if res, err := s.Qdrant.Search(ctx, "faq_items", emb, 1); err == nil {
-			faqMatches = res
-		}
-	}()
+		var wg sync.WaitGroup
+		wg.Add(2)
 
-	wg.Wait()
+		go func() {
+			defer wg.Done()
+			if res, err := s.Qdrant.Search(ctx, "action_intents", emb, 1); err == nil {
+				actionMatches = res
+			}
+		}()
+
+		go func() {
+			defer wg.Done()
+			if res, err := s.Qdrant.Search(ctx, "faq_items", emb, 1); err == nil {
+				faqMatches = res
+			}
+		}()
+
+		wg.Wait()
+	} else {
+		s.LogEvent(ctx, turnID, "cache_bypass", map[string]any{
+			"turn_id": turnID,
+			"reason":  "short query in active conversation",
+			"query":   finalTranscript,
+		})
+	}
 
 	// Precedence 1: Action Intent Match >= NORMAL
 	if len(actionMatches) > 0 && actionMatches[0].Score >= s.NormalThreshold {
