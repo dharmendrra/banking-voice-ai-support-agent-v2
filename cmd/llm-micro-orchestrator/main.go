@@ -461,6 +461,9 @@ func (s *OrchestratorServer) handleFinal(w http.ResponseWriter, r *http.Request)
 			if strings.Contains(lowerTranscript, "transaction") || strings.Contains(lowerTranscript, "balance") || strings.Contains(lowerTranscript, "due") || strings.Contains(lowerTranscript, "block") {
 				bypassCache = false
 			}
+			if (strings.Contains(lowerTranscript, "is my") || strings.Contains(lowerTranscript, "check if")) && strings.Contains(lowerTranscript, "blocked") {
+				bypassCache = true
+			}
 
 		var cacheMatched bool
 		var searchRes struct {
