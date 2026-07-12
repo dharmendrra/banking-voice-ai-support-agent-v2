@@ -31,8 +31,25 @@ Under this setup, the consumer daemon will run under its own dedicated APM/loggi
 ## 3. Implementation Details
 
 ### A. The Producer: Publishing to Redis Stream
-The existing `ToolCallAuditService` inside `internal/audit/audit_service.go` already publishes events to `audit_log_stream`:
+The existing `ToolCallAuditService` inside `internal/audit/audit_service.go` publishes events to `audit_log_stream`. We will inject the standard W3C `"traceparent"` string into the event metadata so the consumer can reconstruct the trace context:
+
 ```go
+// Get traceparent from context using standard OpenTelemetry propagator
+var tpMap = make(map[string]string)
+otel.GetTextMapPropagator().Inject(ctx, propagation.MapCarrier(tpMap))
+traceParent := tpMap["traceparent"]
+
+event := map[string]interface{}{
+    "timestamp":    time.Now().Format(time.RFC3339),
+    "turn_id":      turnID,
+    "session_id":   sessionID,
+    "user_id":      userID,
+    "action":       toolName,
+    "args":         string(argsBytes),
+    "result":       result,
+    "traceparent":  traceParent, // Inject trace context for async correlation
+}
+
 err := s.Redis.Client.XAdd(ctx, &redis.XAddArgs{
     Stream: "audit_log_stream",
     Values: event,
@@ -42,7 +59,7 @@ err := s.Redis.Client.XAdd(ctx, &redis.XAddArgs{
 ---
 
 ### B. The Consumer: Reading and Sinking to Cassandra
-The consumer daemon runs as a background process (or goroutine started in `cmd/llm-orchestrator-server/main.go`). It uses `XReadGroup` to read and process the events.
+The consumer daemon runs as a background process. It extracts the `"traceparent"` from the message, recreates the trace context, and starts its write span as a linked or child span of the original transaction trace.
 
 **Go Code Template**:
 ```go
@@ -84,12 +101,20 @@ func StartAuditConsumer(ctx context.Context, r *db.RedisManager, c *db.Cassandra
                         action, _ := msg.Values["action"].(string)
                         args, _ := msg.Values["args"].(string)
                         result, _ := msg.Values["result"].(string)
+                        traceParent, _ := msg.Values["traceparent"].(string)
 
-                        // 2. Write to Cassandra Audit table
-                        bgCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-                        // Assume a method LogAuditEvent is defined in Cassandra manager
-                        writeErr := c.LogAuditEvent(bgCtx, userID, sessionID, turnID, action, args, result)
-                        cancel()
+                        // 2. Extract Context from traceparent
+                        var tpCtx = context.Background()
+                        if traceParent != "" {
+                            tpCtx = otel.GetTextMapPropagator().Extract(tpCtx, propagation.MapCarrier{"traceparent": traceParent})
+                        }
+
+                        // 3. Start OTel span for async database write
+                        spanCtx, span := otel.Tracer("audit-consumer").Start(tpCtx, "cassandra.write_audit")
+
+                        // 4. Write to Cassandra Audit table
+                        writeErr := c.LogAuditEvent(spanCtx, userID, sessionID, turnID, action, args, result)
+                        span.End()
 
                         duration := time.Since(start)
                         durationMS := float64(duration.Nanoseconds()) / 1e6
@@ -111,11 +136,11 @@ func StartAuditConsumer(ctx context.Context, r *db.RedisManager, c *db.Cassandra
                         if writeErr != nil {
                             logRecord.Level = "ERROR"
                             logRecord.Message = fmt.Sprintf("Failed to write audit to Cassandra: %v", writeErr)
-                            logger.ErrorContext(ctx, "audit_write_failed", slog.Any("details", logRecord))
+                            logger.ErrorContext(spanCtx, "audit_write_failed", slog.Any("details", logRecord))
                         } else {
                             // Acknowledge the message in Redis Stream
                             r.Client.XAck(ctx, stream, group, msg.ID)
-                            logger.InfoContext(ctx, "audit_write_success", logRecord.SlogArgs()...)
+                            logger.InfoContext(spanCtx, "audit_write_success", logRecord.SlogArgs()...)
                         }
                     }
                 }
