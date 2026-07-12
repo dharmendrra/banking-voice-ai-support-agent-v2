@@ -14,7 +14,6 @@ import (
 )
 
 func TestConversationalEvaluation(t *testing.T) {
-	t.Parallel()
 	// Initialize local database clients (targeting Docker exposed ports on localhost)
 	mongoURI := "mongodb://localhost:27017"
 	redisAddr := "localhost:6379"
