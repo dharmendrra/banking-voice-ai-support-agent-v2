@@ -9,32 +9,17 @@ echo " 🛑 Terminating Voice AI Support Agent V2..."
 echo "================================================================"
 echo ""
 
-# 1. Kill llm-micro-orchestrator listening on port 9083
-if lsof -Pi :9083 -sTCP:LISTEN -t &> /dev/null; then
-  PID=$(lsof -Pi :9083 -sTCP:LISTEN -t)
-  echo "Stopping llm-micro-orchestrator (PID $PID)..."
-  kill -9 "$PID" || true
-else
-  echo "✅ llm-micro-orchestrator is not running."
-fi
-
-# 2. Kill media-engine listening on port 9082
-MEDIA_STOPPED=false
-for port in 9082; do
+# 1. Kill any local Go microservices/orchestrators running on the host Mac
+echo "Checking for lingering local host processes..."
+local_ports=(9082 9083 9085 9086 9087 9088 9089 9091)
+for port in "${local_ports[@]}"; do
   if lsof -Pi :$port -sTCP:LISTEN -t &> /dev/null; then
     PID=$(lsof -Pi :$port -sTCP:LISTEN -t)
-    PNAME=$(ps -p "$PID" -o comm= 2>/dev/null || echo "")
-    if [[ "$PNAME" == *"media-engine"* ]]; then
-      echo "Stopping media-engine on port $port (PID $PID)..."
-      kill -9 "$PID" || true
-      MEDIA_STOPPED=true
-    fi
+    PNAME=$(ps -p "$PID" -o comm= 2>/dev/null || echo "Go service")
+    echo "Stopping local process '$PNAME' on port $port (PID $PID)..."
+    kill -9 "$PID" || true
   fi
 done
-
-if [ "$MEDIA_STOPPED" = false ]; then
-  echo "✅ media-engine is not running."
-fi
 
 # 3. Spin down database containers
 echo "🐳 Stopping database containers (Qdrant, Redis, MongoDB)..."
