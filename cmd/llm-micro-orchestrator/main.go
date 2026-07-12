@@ -413,14 +413,20 @@ func (s *OrchestratorServer) handleFinal(w http.ResponseWriter, r *http.Request)
 
 	} else {
 		// 2. Standard path (context load -> cache -> LLM fallback)
-		// Fetch conversation context from context-service
 		var history []ollama.ChatMessage
-		reqCtx, err := http.NewRequestWithContext(ctx, "GET", s.ContextService+"/context?session_id="+req.SessionID, nil)
+		loadBody, _ := json.Marshal(map[string]string{"session_id": req.SessionID})
+		reqCtx, err := http.NewRequestWithContext(ctx, "POST", s.ContextService+"/load", bytes.NewBuffer(loadBody))
 		if err == nil {
+			reqCtx.Header.Set("Content-Type", "application/json")
 			resp, err := s.HTTPClient.Do(reqCtx)
 			if err == nil {
 				defer resp.Body.Close()
-				_ = json.NewDecoder(resp.Body).Decode(&history)
+				var loadRes struct {
+					Messages []ollama.ChatMessage `json:"messages"`
+				}
+				if json.NewDecoder(resp.Body).Decode(&loadRes) == nil {
+					history = loadRes.Messages
+				}
 			}
 		}
 
@@ -611,11 +617,11 @@ func (s *OrchestratorServer) handleFinal(w http.ResponseWriter, r *http.Request)
 
 		// 1. Call context-service to append turns
 		contextAppendBody, _ := json.Marshal(map[string]any{
-			"session_id":    req.SessionID,
-			"user_msg":      req.Text,
-			"assistant_msg": replyText,
+			"session_id":        req.SessionID,
+			"user_message":      req.Text,
+			"assistant_message": replyText,
 		})
-		reqCtx, err := http.NewRequestWithContext(histCtx, "POST", s.ContextService+"/context", bytes.NewBuffer(contextAppendBody))
+		reqCtx, err := http.NewRequestWithContext(histCtx, "POST", s.ContextService+"/save", bytes.NewBuffer(contextAppendBody))
 		if err == nil {
 			reqCtx.Header.Set("Content-Type", "application/json")
 			resp, err := s.HTTPClient.Do(reqCtx)
@@ -718,6 +724,22 @@ func (s *OrchestratorServer) handleConfirmation(w http.ResponseWriter, r *http.R
 	// Log confirmation outcomes asynchronously
 	go func() {
 		histCtx := telemetry.WithTraceContext(context.Background(), req.SessionID, req.TurnID)
+
+		// Call context-service to append turns
+		contextAppendBody, _ := json.Marshal(map[string]any{
+			"session_id":        req.SessionID,
+			"user_message":      req.Text,
+			"assistant_message": replyText,
+		})
+		reqCtx, err := http.NewRequestWithContext(histCtx, "POST", s.ContextService+"/save", bytes.NewBuffer(contextAppendBody))
+		if err == nil {
+			reqCtx.Header.Set("Content-Type", "application/json")
+			resp, err := s.HTTPClient.Do(reqCtx)
+			if err == nil {
+				resp.Body.Close()
+			}
+		}
+
 		s.LogConversationTurn(histCtx, userID, req.SessionID, "user", req.Text, "confirmation", "", "")
 		s.LogConversationTurn(histCtx, userID, req.SessionID, "assistant", replyText, "confirmation", "", "")
 	}()
