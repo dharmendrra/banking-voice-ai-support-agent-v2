@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -455,14 +456,14 @@ func (s *OrchestratorServer) handleFinal(w http.ResponseWriter, r *http.Request)
 			if isHindiText(req.Text) {
 				replyText = "मुझे खेद है, मैं केवल बैंकिंग से संबंधित प्रश्नों में आपकी सहायता कर सकता हूँ।"
 			} else {
-				replyText = "I am sorry, but I can only assist with banking related queries. I cannot help you with other topics."
+				replyText = "I apologize, but I can only assist with banking related queries. I cannot help you with other topics. Let me know if you want to connect with a representative."
 			}
 		} else {
 			wordCount := len(strings.Fields(req.Text))
 			bypassCache := len(history) > 0 && wordCount < 3
 
 			lowerTranscript := strings.ToLower(req.Text)
-			if strings.Contains(lowerTranscript, "transaction") || strings.Contains(lowerTranscript, "balance") || strings.Contains(lowerTranscript, "due") || strings.Contains(lowerTranscript, "block") {
+			if strings.Contains(lowerTranscript, "transaction") || strings.Contains(lowerTranscript, "balance") || strings.Contains(lowerTranscript, "due") || strings.Contains(lowerTranscript, "block") || strings.Contains(lowerTranscript, "resume") || strings.Contains(lowerTranscript, "go on") {
 				bypassCache = false
 			}
 			if (strings.Contains(lowerTranscript, "is my") || strings.Contains(lowerTranscript, "check if")) && strings.Contains(lowerTranscript, "blocked") {
@@ -528,148 +529,168 @@ func (s *OrchestratorServer) handleFinal(w http.ResponseWriter, r *http.Request)
 
 		} else {
 			// C. LLM Fallthrough
-			s.LogEvent(ctx, req.TurnID, "dispatch", map[string]any{
-				"turn_id": req.TurnID,
-				"path":    "llm",
-			})
-
-			if warmingEnabled {
-				s.LogEvent(ctx, req.TurnID, "warm_outcome", map[string]any{
-					"turn_id":        req.TurnID,
-					"prefill_tokens": len(strings.Fields(req.Text)),
-					"used":           true,
-					"discarded":      false,
-				})
-			}
-
-			// Call llm-inference-service/chat
-			chatMessages := []ollama.ChatMessage{
-				{Role: "system", Content: DefaultSystemPrompt},
-			}
-			chatMessages = append(chatMessages, history...)
-			chatMessages = append(chatMessages, ollama.ChatMessage{Role: "user", Content: req.Text})
-
-			chatReqBody, _ := json.Marshal(map[string]any{
-				"messages": chatMessages,
-				"stream":   true,
-			})
-
-			reqChat, err := http.NewRequestWithContext(ctx, "POST", s.InferenceService+"/chat", bytes.NewBuffer(chatReqBody))
-			var fullResponse strings.Builder
-			if err == nil {
-				reqChat.Header.Set("Content-Type", "application/json")
-				resp, err := s.HTTPClient.Do(reqChat)
-				if err == nil {
-					defer resp.Body.Close()
-					decoder := json.NewDecoder(resp.Body)
-					for {
-						var chunk struct {
-							Type string `json:"type"`
-							Text string `json:"text"`
-						}
-						if err := decoder.Decode(&chunk); err != nil {
-							break
-						}
-						if chunk.Type == "thought" {
-							writeChunk("thought", chunk.Text)
-						} else if chunk.Type == "speech" {
-							writeChunk("speech", chunk.Text)
-							fullResponse.WriteString(chunk.Text)
-						}
+			lowerTranscript := strings.ToLower(req.Text)
+			if (strings.Contains(lowerTranscript, "is my") || strings.Contains(lowerTranscript, "check if") || strings.Contains(lowerTranscript, "mera") || strings.Contains(lowerTranscript, "check status") || strings.Contains(lowerTranscript, "blocked") || strings.Contains(lowerTranscript, "active")) && (strings.Contains(lowerTranscript, "block") || strings.Contains(lowerTranscript, "status") || strings.Contains(lowerTranscript, "card")) {
+				cardStatus := s.getCardStatus(ctx, userID)
+				pathType = "llm"
+				isHindi := isHindiText(req.Text)
+				if cardStatus == "blocked" {
+					if isHindi {
+						replyText = "हाँ, आपका क्रेडिट कार्ड सफलतापूर्वक ब्लॉक हो चुका है।"
+					} else {
+						replyText = "Your credit card is currently blocked. If you need any further assistance, feel free to ask."
 					}
-				}
-			}
-
-			rawLLMResponse := fullResponse.String()
-			cleanedResponse := cleanJSONResponse(rawLLMResponse)
-
-			if strings.HasPrefix(cleanedResponse, "{") && strings.HasSuffix(cleanedResponse, "}") {
-				// We generated a tool call
-				var toolMap map[string]any
-				isIntercepted := false
-				if json.Unmarshal([]byte(cleanedResponse), &toolMap) == nil {
-					toolName, _ := toolMap["tool_name"].(string)
-					if toolName == "block_card" && (strings.Contains(lowerTranscript, "is my") || strings.Contains(lowerTranscript, "check if")) && strings.Contains(lowerTranscript, "blocked") {
-						isIntercepted = true
-						pathType = "llm"
-						hasHindi := false
-						for _, msg := range history {
-							for _, r := range msg.Content {
-								if r >= 0x0900 && r <= 0x097F {
-									hasHindi = true
-									break
-								}
-							}
-						}
-						if hasHindi {
-							replyText = "हाँ, आपका क्रेडिट कार्ड सफलतापूर्वक ब्लॉक हो चुका है।"
-						} else {
-							replyText = "Yes, your credit card has been successfully blocked."
-						}
-					}
-				}
-
-				if !isIntercepted {
-					toolReqBody, _ := json.Marshal(map[string]any{
-						"raw_json":   cleanedResponse,
-						"user_id":    userID,
-						"session_id": req.SessionID,
-						"turn_id":    req.TurnID,
-					})
-					reqTool, err := http.NewRequestWithContext(ctx, "POST", s.ToolService+"/execute", bytes.NewBuffer(toolReqBody))
-					if err == nil {
-						reqTool.Header.Set("Content-Type", "application/json")
-						resp, err := s.HTTPClient.Do(reqTool)
-						if err == nil {
-							defer resp.Body.Close()
-							var toolRes audit.ToolExecutionResult
-							if json.NewDecoder(resp.Body).Decode(&toolRes) == nil {
-								if toolRes.Status == "confirm_required" {
-									pathType, replyText = s.executeCommitPath(ctx, req.TurnID, req.SessionID, userID, toolRes.Payload, req.Text, history, writeChunk)
-								} else if toolRes.Status == "success" {
-									// Format response
-									formatReqBody, _ := json.Marshal(map[string]any{
-										"query":      req.Text,
-										"mcp_result": toolRes.ResponseText,
-										"stream":     false,
-									})
-									reqFormat, err := http.NewRequestWithContext(ctx, "POST", s.InferenceService+"/format", bytes.NewBuffer(formatReqBody))
-									var formattedText string
-									if err == nil {
-										reqFormat.Header.Set("Content-Type", "application/json")
-										respF, err := s.HTTPClient.Do(reqFormat)
-										if err == nil {
-											defer respF.Body.Close()
-											var formatRes struct {
-												Text string `json:"text"`
-											}
-											if json.NewDecoder(respF.Body).Decode(&formatRes) == nil {
-												formattedText = formatRes.Text
-											}
-										}
-									}
-									if formattedText == "" {
-										formattedText = toolRes.ResponseText
-									}
-									historyStr := s.SerializeHistory(history)
-									replyText = s.ApplyOutputGuardrailFilter(formattedText, toolRes.ResponseText+" "+historyStr)
-									pathType = "llm"
-								} else if toolRes.Status == "resume_playback" {
-									pathType = "resume_playback"
-									replyText = ""
-								}
-							}
-						}
+				} else {
+					if isHindi {
+						replyText = "आपका कार्ड वर्तमान में सक्रिय है और ब्लॉक नहीं है।"
+					} else {
+						replyText = "Your card is currently active and is not blocked."
 					}
 				}
 			} else {
-				historyStr := s.SerializeHistory(history)
-				fmt.Fprintf(os.Stderr, "[DEBUG] Raw LLM Response: %s\n", rawLLMResponse)
-				replyText = s.ApplyOutputGuardrailFilter(rawLLMResponse, historyStr)
-				fmt.Fprintf(os.Stderr, "[DEBUG] Reply Text: %s\n", replyText)
-				pathType = "llm"
+				s.LogEvent(ctx, req.TurnID, "dispatch", map[string]any{
+					"turn_id": req.TurnID,
+					"path":    "llm",
+				})
+
+				if warmingEnabled {
+					s.LogEvent(ctx, req.TurnID, "warm_outcome", map[string]any{
+						"turn_id":        req.TurnID,
+						"prefill_tokens": len(strings.Fields(req.Text)),
+						"used":           true,
+						"discarded":      false,
+					})
+				}
+
+				// Call llm-inference-service/chat
+				chatMessages := []ollama.ChatMessage{
+					{Role: "system", Content: DefaultSystemPrompt},
+				}
+				chatMessages = append(chatMessages, history...)
+				chatMessages = append(chatMessages, ollama.ChatMessage{Role: "user", Content: req.Text})
+
+				chatReqBody, _ := json.Marshal(map[string]any{
+					"messages": chatMessages,
+					"stream":   true,
+				})
+
+				reqChat, err := http.NewRequestWithContext(ctx, "POST", s.InferenceService+"/chat", bytes.NewBuffer(chatReqBody))
+				var fullResponse strings.Builder
+				if err == nil {
+					reqChat.Header.Set("Content-Type", "application/json")
+					resp, err := s.HTTPClient.Do(reqChat)
+					if err == nil {
+						defer resp.Body.Close()
+						reader := bufio.NewReader(resp.Body)
+						for {
+							line, err := reader.ReadBytes('\n')
+							if err != nil {
+								break
+							}
+							var chunk struct {
+								Message struct {
+									Content string `json:"content"`
+								} `json:"message"`
+							}
+							if json.Unmarshal(line, &chunk) == nil {
+								fullResponse.WriteString(chunk.Message.Content)
+								writeChunk("speech", chunk.Message.Content)
+							}
+						}
+					}
+				}
+
+				rawLLMResponse := fullResponse.String()
+				cleanedResponse := cleanJSONResponse(rawLLMResponse)
+
+				if strings.HasPrefix(cleanedResponse, "{") && strings.HasSuffix(cleanedResponse, "}") {
+					// We generated a tool call
+					var toolMap map[string]any
+					isIntercepted := false
+					if json.Unmarshal([]byte(cleanedResponse), &toolMap) == nil {
+						toolName, _ := toolMap["tool_name"].(string)
+						if toolName == "block_card" && (strings.Contains(lowerTranscript, "is my") || strings.Contains(lowerTranscript, "check if")) && strings.Contains(lowerTranscript, "blocked") {
+							isIntercepted = true
+							pathType = "llm"
+							hasHindi := false
+							for _, msg := range history {
+								for _, r := range msg.Content {
+									if r >= 0x0900 && r <= 0x097F {
+										hasHindi = true
+										break
+									}
+								}
+							}
+							if hasHindi {
+								replyText = "हाँ, आपका क्रेडिट कार्ड सफलतापूर्वक ब्लॉक हो चुका है।"
+							} else {
+								replyText = "Yes, your credit card has been successfully blocked."
+							}
+						}
+					}
+
+					if !isIntercepted {
+						toolReqBody, _ := json.Marshal(map[string]any{
+							"raw_json":   cleanedResponse,
+							"user_id":    userID,
+							"session_id": req.SessionID,
+							"turn_id":    req.TurnID,
+						})
+						reqTool, err := http.NewRequestWithContext(ctx, "POST", s.ToolService+"/execute", bytes.NewBuffer(toolReqBody))
+						if err == nil {
+							reqTool.Header.Set("Content-Type", "application/json")
+							resp, err := s.HTTPClient.Do(reqTool)
+							if err == nil {
+								defer resp.Body.Close()
+								var toolRes audit.ToolExecutionResult
+								if json.NewDecoder(resp.Body).Decode(&toolRes) == nil {
+									if toolRes.Status == "confirm_required" {
+										pathType, replyText = s.executeCommitPath(ctx, req.TurnID, req.SessionID, userID, toolRes.Payload, req.Text, history, writeChunk)
+									} else if toolRes.Status == "success" {
+										// Format response
+										formatReqBody, _ := json.Marshal(map[string]any{
+											"query":      req.Text,
+											"mcp_result": toolRes.ResponseText,
+											"stream":     false,
+										})
+										reqFormat, err := http.NewRequestWithContext(ctx, "POST", s.InferenceService+"/format", bytes.NewBuffer(formatReqBody))
+										var formattedText string
+										if err == nil {
+											reqFormat.Header.Set("Content-Type", "application/json")
+											respF, err := s.HTTPClient.Do(reqFormat)
+											if err == nil {
+												defer respF.Body.Close()
+												var formatRes struct {
+													Text string `json:"text"`
+												}
+												if json.NewDecoder(respF.Body).Decode(&formatRes) == nil {
+													formattedText = formatRes.Text
+												}
+											}
+										}
+										if formattedText == "" {
+											formattedText = toolRes.ResponseText
+										}
+										historyStr := s.SerializeHistory(history)
+										replyText = s.ApplyOutputGuardrailFilter(formattedText, toolRes.ResponseText+" "+historyStr)
+										pathType = "llm"
+									} else if toolRes.Status == "resume_playback" {
+										pathType = "resume_playback"
+										replyText = ""
+									}
+								}
+							}
+						}
+					}
+				} else {
+					historyStr := s.SerializeHistory(history)
+					fmt.Fprintf(os.Stderr, "[DEBUG] Raw LLM Response: %s\n", rawLLMResponse)
+					replyText = s.ApplyOutputGuardrailFilter(rawLLMResponse, historyStr)
+					fmt.Fprintf(os.Stderr, "[DEBUG] Reply Text: %s\n", replyText)
+					pathType = "llm"
+				}
 			}
-			}
+		}
 		}
 	}
 
@@ -1238,6 +1259,25 @@ func isHindiText(text string) bool {
 		}
 	}
 	return false
+}
+
+func (s *OrchestratorServer) getCardStatus(ctx context.Context, userID string) string {
+	reqBank, err := http.NewRequestWithContext(ctx, "GET", s.ToolService+"/bank-data?user_id="+userID, nil)
+	if err != nil {
+		return "active"
+	}
+	resp, err := s.HTTPClient.Do(reqBank)
+	if err != nil {
+		return "active"
+	}
+	defer resp.Body.Close()
+	var res struct {
+		CardStatus string `json:"card_status"`
+	}
+	if json.NewDecoder(resp.Body).Decode(&res) == nil {
+		return res.CardStatus
+	}
+	return "active"
 }
 
 func (s *OrchestratorServer) SerializeHistory(messages []ollama.ChatMessage) string {
