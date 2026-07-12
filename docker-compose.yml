@@ -57,28 +57,161 @@ services:
       timeout: 10s
       retries: 10
 
-  llm-orchestrator-server:
+  session-context-service:
     build: .
-    command: ["./llm-orchestrator-server"]
+    command: ["./session-context-service"]
+    ports:
+      - "9087:9087"
     environment:
-      - MONGO_URI=mongodb://voice_agent_mongodb_v2:27017
       - REDIS_ADDR=voice_agent_redis_v2:6379
-      - QDRANT_URL=http://voice_agent_qdrant_v2:6333
-      - CASSANDRA_HOSTS=cassandra
-      - OLLAMA_URL=http://host.docker.internal:11434
-      - CHAT_MODEL=gemma4:e4b
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://host.docker.internal:4317
-      - OTEL_LOGS_EXPORTER=otlp
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9087/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  llm-inference-service:
+    build: .
+    command: ["./llm-inference-service"]
+    ports:
+      - "9091:9091"
+    environment:
+      - OLLAMA_URL=http://host.docker.internal:11434
+      - CHAT_MODEL=qwen2.5:7b-instruct
+      - EMBED_MODEL=bge-m3
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://host.docker.internal:4317
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9091/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  semantic-cache-service:
+    build: .
+    command: ["./semantic-cache-service"]
+    ports:
+      - "9089:9089"
+    environment:
+      - QDRANT_URL=http://voice_agent_qdrant_v2:6333
+      - INFERENCE_SERVICE_URL=http://llm-inference-service:9091
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://host.docker.internal:4317
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
       qdrant:
         condition: service_healthy
-      redis:
+      llm-inference-service:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9089/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  tool-execution-service:
+    build: .
+    command: ["./tool-execution-service"]
+    ports:
+      - "9088:9088"
+    environment:
+      - MONGO_URI=mongodb://voice_agent_mongodb_v2:27017
+      - REDIS_ADDR=voice_agent_redis_v2:6379
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://host.docker.internal:4317
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
       mongodb:
         condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9088/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  conversation-history-consumer:
+    build: .
+    command: ["./conversation-history-consumer"]
+    ports:
+      - "9085:9085"
+    environment:
+      - REDIS_ADDR=voice_agent_redis_v2:6379
+      - CASSANDRA_HOSTS=cassandra
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://host.docker.internal:4317
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      redis:
+        condition: service_healthy
       cassandra:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9085/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  audit-log-consumer:
+    build: .
+    command: ["./audit-log-consumer"]
+    ports:
+      - "9086:9086"
+    environment:
+      - REDIS_ADDR=voice_agent_redis_v2:6379
+      - CASSANDRA_HOSTS=cassandra
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://host.docker.internal:4317
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      redis:
+        condition: service_healthy
+      cassandra:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9086/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  llm-orchestrator-server:
+    build: .
+    command: ["./llm-orchestrator-server"]
+    ports:
+      - "9083:9083"
+    environment:
+      - REDIS_ADDR=voice_agent_redis_v2:6379
+      - CONTEXT_SERVICE_URL=http://session-context-service:9087
+      - CACHE_SERVICE_URL=http://semantic-cache-service:9089
+      - INFERENCE_SERVICE_URL=http://llm-inference-service:9091
+      - TOOL_SERVICE_URL=http://tool-execution-service:9088
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://host.docker.internal:4317
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      redis:
+        condition: service_healthy
+      session-context-service:
+        condition: service_healthy
+      semantic-cache-service:
+        condition: service_healthy
+      llm-inference-service:
+        condition: service_healthy
+      tool-execution-service:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9083/healthz"]
@@ -127,17 +260,6 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
-
-#   kokoro-tts:
-#     image: ghcr.io/remsky/kokoro-fastapi-cpu:latest
-#     container_name: voice_agent_kokoro_v2
-#     ports:
-#       - "8880:8880"
-#     healthcheck:
-#       test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8880/docs')"]
-#       interval: 5s
-#       timeout: 3s
-#       retries: 5
 
   lb:
     image: nginx:alpine
