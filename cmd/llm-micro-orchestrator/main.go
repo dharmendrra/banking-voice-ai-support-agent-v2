@@ -438,7 +438,7 @@ func (s *OrchestratorServer) handleFinal(w http.ResponseWriter, r *http.Request)
 			strings.Contains(lowerQuery, "system instruction") ||
 			strings.Contains(lowerQuery, "override")
 		
-		isOutOfScope := strings.Contains(lowerQuery, "story") ||
+		isOutOfScope := (strings.Contains(lowerQuery, "story") && !strings.Contains(lowerQuery, "history")) ||
 			strings.Contains(lowerQuery, "dragon") ||
 			strings.Contains(lowerQuery, "joke") ||
 			strings.Contains(lowerQuery, "weather") ||

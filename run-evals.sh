@@ -56,6 +56,12 @@ for cmd in docker jq bc python3; do
   fi
 done
 
+# Check for --e2e flag
+RUN_E2E=false
+if [[ "$1" == "--e2e" ]] || [[ "$2" == "--e2e" ]]; then
+  RUN_E2E=true
+fi
+
 # Ensure Docker environment is up
 echo -e "\n${CYAN}[1/3] Verifying Docker environment status...${NC}"
 if [ "$BYPASS_DOCKER" = "true" ]; then
@@ -79,6 +85,17 @@ else
   else
     echo -e "${GREEN}✓ Application docker stack is running (detected voice_agent_redis_v2).${NC}"
   fi
+fi
+
+# Run Go E2E tests if requested
+if [ "$RUN_E2E" = "true" ]; then
+  echo -e "\n${CYAN}Running Go E2E Integration tests...${NC}"
+  go test -v ./internal/llm-micro-orchestrator/...
+  if [ $? -ne 0 ]; then
+    echo -e "${RED}Error: Go E2E Integration tests failed!${NC}"
+    exit 1
+  fi
+  echo -e "${GREEN}✓ Go E2E Integration tests passed.${NC}"
 fi
 
 # Run python evaluations
