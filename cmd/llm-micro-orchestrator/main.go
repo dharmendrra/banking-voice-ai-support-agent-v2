@@ -25,6 +25,8 @@ import (
 
 	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 const DefaultSystemPrompt = `You are a friendly customer service agent for a retail bank. You support both English and Hindi.
@@ -184,6 +186,10 @@ func (s *OrchestratorServer) handlePartial(w http.ResponseWriter, r *http.Reques
 	}
 
 	ctx := telemetry.WithTraceContext(r.Context(), req.SessionID, req.TurnID)
+	trace.SpanFromContext(ctx).SetAttributes(
+		attribute.String("session_id", req.SessionID),
+		attribute.String("turn_id", req.TurnID),
+	)
 
 	s.muWarming.Lock()
 	if oldCancel, ok := s.warmingCancel[req.SessionID]; ok {
@@ -307,6 +313,10 @@ func (s *OrchestratorServer) handleFinal(w http.ResponseWriter, r *http.Request)
 	}
 
 	ctx := telemetry.WithTraceContext(r.Context(), req.SessionID, req.TurnID)
+	trace.SpanFromContext(ctx).SetAttributes(
+		attribute.String("session_id", req.SessionID),
+		attribute.String("turn_id", req.TurnID),
+	)
 
 	s.muWarming.Lock()
 	if cancel, ok := s.warmingCancel[req.SessionID]; ok {
@@ -640,6 +650,10 @@ func (s *OrchestratorServer) handleConfirmation(w http.ResponseWriter, r *http.R
 	}
 
 	ctx := telemetry.WithTraceContext(r.Context(), req.SessionID, req.TurnID)
+	trace.SpanFromContext(ctx).SetAttributes(
+		attribute.String("session_id", req.SessionID),
+		attribute.String("turn_id", req.TurnID),
+	)
 
 	userID := req.UserID
 	if userID == "" {
