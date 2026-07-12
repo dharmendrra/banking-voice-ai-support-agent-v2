@@ -426,9 +426,9 @@ func (s *OrchestratorServer) handleFinal(w http.ResponseWriter, r *http.Request)
 				}
 				if json.NewDecoder(resp.Body).Decode(&loadRes) == nil {
 					history = loadRes.Messages
-					log.Printf("[DEBUG] Loaded history for session %s: %d messages", req.SessionID, len(history))
+					fmt.Fprintf(os.Stderr, "[DEBUG] Loaded history for session %s: %d messages\n", req.SessionID, len(history))
 					for idx, msg := range history {
-						log.Printf("[DEBUG] history[%d]: role=%s content=%q", idx, msg.Role, msg.Content)
+						fmt.Fprintf(os.Stderr, "[DEBUG] history[%d]: role=%s content=%q\n", idx, msg.Role, msg.Content)
 					}
 				}
 			}
@@ -498,7 +498,7 @@ func (s *OrchestratorServer) handleFinal(w http.ResponseWriter, r *http.Request)
 			})
 		}
 
-		log.Printf("[DEBUG] query: %q, bypassCache: %v, cacheMatched: %v, actionScore: %f, normalThreshold: %f", req.Text, bypassCache, cacheMatched, searchRes.BestActionScore, normalThreshold)
+		fmt.Fprintf(os.Stderr, "[DEBUG] query: %q, bypassCache: %v, cacheMatched: %v, actionScore: %f, normalThreshold: %f\n", req.Text, bypassCache, cacheMatched, searchRes.BestActionScore, normalThreshold)
 
 		// A. Action Intent Match
 		if cacheMatched && searchRes.BestActionScore >= normalThreshold {
@@ -638,9 +638,9 @@ func (s *OrchestratorServer) handleFinal(w http.ResponseWriter, r *http.Request)
 				}
 				} else {
 					historyStr := s.SerializeHistory(history)
-					log.Printf("[DEBUG] Raw LLM Response: %s", rawLLMResponse)
+					fmt.Fprintf(os.Stderr, "[DEBUG] Raw LLM Response: %s\n", rawLLMResponse)
 					replyText = s.ApplyOutputGuardrailFilter(rawLLMResponse, historyStr)
-					log.Printf("[DEBUG] Reply Text: %s", replyText)
+					fmt.Fprintf(os.Stderr, "[DEBUG] Reply Text: %s\n", replyText)
 					pathType = "llm"
 				}
 			}
