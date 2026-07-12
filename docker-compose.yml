@@ -145,8 +145,6 @@ services:
   conversation-history-consumer:
     build: .
     command: ["./conversation-history-consumer"]
-    ports:
-      - "9085:9085"
     environment:
       - REDIS_ADDR=voice_agent_redis_v2:6379
       - CASSANDRA_HOSTS=cassandra
@@ -168,8 +166,6 @@ services:
   audit-log-consumer:
     build: .
     command: ["./audit-log-consumer"]
-    ports:
-      - "9086:9086"
     environment:
       - REDIS_ADDR=voice_agent_redis_v2:6379
       - CASSANDRA_HOSTS=cassandra
