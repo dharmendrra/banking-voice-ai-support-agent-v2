@@ -120,10 +120,10 @@ func StartHistoryConsumer(ctx context.Context, r *db.RedisManager, c *db.Cassand
 							logRecord.Message = fmt.Sprintf("Failed to write to Cassandra: %v", writeErr)
 							logger.ErrorContext(ctx, "history_write_failed", slog.Any("details", logRecord))
 						} else {
-							// Acknowledge the message in Redis Stream
-							r.Client.XAck(ctx, stream, group, msg.ID)
 							logger.InfoContext(ctx, "history_write_success", logRecord.SlogArgs()...)
 						}
+						// Always acknowledge the message to prevent blocking the stream on validation or write failures
+						r.Client.XAck(ctx, stream, group, msg.ID)
 					}
 				}
 			}
@@ -291,10 +291,10 @@ func StartAuditConsumer(ctx context.Context, r *db.RedisManager, c *db.Cassandra
 							logRecord.Message = fmt.Sprintf("Failed to write audit to Cassandra: %v", writeErr)
 							logger.ErrorContext(spanCtx, "audit_write_failed", slog.Any("details", logRecord))
 						} else {
-							// Acknowledge the message in Redis Stream
-							r.Client.XAck(ctx, stream, group, msg.ID)
 							logger.InfoContext(spanCtx, "audit_write_success", logRecord.SlogArgs()...)
 						}
+						// Always acknowledge the message to prevent blocking the stream on validation or write failures
+						r.Client.XAck(ctx, stream, group, msg.ID)
 					}
 				}
 			}
