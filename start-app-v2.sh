@@ -136,7 +136,7 @@ if [ "$FORCE_REBUILD" = false ] && [ -n "$(docker compose ps --filter "status=ru
 else
     if [ "$FORCE_REBUILD" = true ]; then
         echo -e "${YELLOW}Forcing recreate and rebuild of compose stack...${NC}"
-        docker compose down >/dev/null 2>&1
+        docker compose down --remove-orphans >/dev/null 2>&1
     fi
     echo -e "${BLUE}Spinning up Qdrant, Redis, MongoDB, 3 Orchestrators, and Nginx Load Balancer...${NC}"
     if ! docker compose up -d --build; then
