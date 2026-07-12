@@ -426,6 +426,10 @@ func (s *OrchestratorServer) handleFinal(w http.ResponseWriter, r *http.Request)
 				}
 				if json.NewDecoder(resp.Body).Decode(&loadRes) == nil {
 					history = loadRes.Messages
+					log.Printf("[DEBUG] Loaded history for session %s: %d messages", req.SessionID, len(history))
+					for idx, msg := range history {
+						log.Printf("[DEBUG] history[%d]: role=%s content=%q", idx, msg.Role, msg.Content)
+					}
 				}
 			}
 		}
