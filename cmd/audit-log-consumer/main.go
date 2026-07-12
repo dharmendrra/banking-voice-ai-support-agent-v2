@@ -10,7 +10,7 @@ import (
 	"syscall"
 
 	"banking-voice-ai-agent/internal/db"
-	"banking-voice-ai-agent/internal/llm-orchestrator-server"
+	"banking-voice-ai-agent/internal/llm-micro-orchestrator"
 	"banking-voice-ai-agent/internal/telemetry"
 )
 

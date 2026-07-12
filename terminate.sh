@@ -9,13 +9,13 @@ echo " 🛑 Terminating Voice AI Support Agent V2..."
 echo "================================================================"
 echo ""
 
-# 1. Kill llm-orchestrator-server listening on port 9083
+# 1. Kill llm-micro-orchestrator listening on port 9083
 if lsof -Pi :9083 -sTCP:LISTEN -t &> /dev/null; then
   PID=$(lsof -Pi :9083 -sTCP:LISTEN -t)
-  echo "Stopping llm-orchestrator-server (PID $PID)..."
+  echo "Stopping llm-micro-orchestrator (PID $PID)..."
   kill -9 "$PID" || true
 else
-  echo "✅ llm-orchestrator-server is not running."
+  echo "✅ llm-micro-orchestrator is not running."
 fi
 
 # 2. Kill media-engine listening on port 9082

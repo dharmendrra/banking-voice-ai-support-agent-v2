@@ -206,6 +206,6 @@ echo -e "${BLUE}Opening dashboard http://localhost:9090 and streaming orchestrat
 echo -e "${YELLOW}Press Ctrl+C to stop trailing logs (the containers will keep running).${NC}"
 echo -e "${BLUE}------------------------------------------------------------${NC}"
 
-# Stream logs from media-engine, llm-orchestrator-server, and load balancer
-docker compose logs -f lb media-engine llm-orchestrator-server
+# Stream logs from media-engine, llm-micro-orchestrator, and load balancer
+docker compose logs -f lb media-engine llm-micro-orchestrator
 

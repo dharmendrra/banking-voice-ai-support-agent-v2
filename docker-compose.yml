@@ -188,9 +188,9 @@ services:
       retries: 3
       start_period: 10s
 
-  llm-orchestrator-server:
+  llm-micro-orchestrator:
     build: .
-    command: ["./llm-orchestrator-server"]
+    command: ["./llm-micro-orchestrator"]
     ports:
       - "9083-9085:9083"
     environment:
@@ -226,13 +226,13 @@ services:
     build: .
     command: ["./media-engine"]
     environment:
-      - ORCHESTRATOR_URL=http://llm-orchestrator-server:9083
+      - ORCHESTRATOR_URL=http://llm-micro-orchestrator:9083
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://host.docker.internal:4317
       - OTEL_LOGS_EXPORTER=otlp
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
-      llm-orchestrator-server:
+      llm-micro-orchestrator:
         condition: service_healthy
       livekit:
          condition: service_healthy

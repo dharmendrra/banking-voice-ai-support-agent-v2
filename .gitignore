@@ -1,7 +1,13 @@
 # Binaries
 /banking-agent
 /media-engine
-/llm-orchestrator-server
+/llm-micro-orchestrator
+/session-context-service
+/semantic-cache-service
+/llm-inference-service
+/tool-execution-service
+/conversation-history-consumer
+/audit-log-consumer
 *.exe
 *.exe~
 *.dll

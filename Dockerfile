@@ -4,7 +4,7 @@ COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -o media-engine cmd/media-engine/main.go
-RUN CGO_ENABLED=0 GOOS=linux go build -o llm-orchestrator-server cmd/llm-orchestrator-server/main.go
+RUN CGO_ENABLED=0 GOOS=linux go build -o llm-micro-orchestrator cmd/llm-micro-orchestrator/main.go
 RUN CGO_ENABLED=0 GOOS=linux go build -o session-context-service cmd/session-context-service/main.go
 RUN CGO_ENABLED=0 GOOS=linux go build -o semantic-cache-service cmd/semantic-cache-service/main.go
 RUN CGO_ENABLED=0 GOOS=linux go build -o llm-inference-service cmd/llm-inference-service/main.go
@@ -15,7 +15,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o audit-log-consumer cmd/audit-log-consum
 FROM alpine:latest
 WORKDIR /app
 COPY --from=builder /app/media-engine .
-COPY --from=builder /app/llm-orchestrator-server .
+COPY --from=builder /app/llm-micro-orchestrator .
 COPY --from=builder /app/session-context-service .
 COPY --from=builder /app/semantic-cache-service .
 COPY --from=builder /app/llm-inference-service .
