@@ -135,16 +135,25 @@ func (m *MongoManager) initAndSeed(ctx context.Context) error {
 		return fmt.Errorf("failed to seed account: %w", err)
 	}
 
-	// Seed Card
+	// Seed Cards
 	cardsColl := m.DB.Collection("cards")
-	mockCard := Card{
-		UserID:   "mock_user_123",
-		CardNo:   "4321-8765-9012-3456",
-		CardType: "credit",
-		Status:   "active",
-		DueDate:  "2026-07-25",
+	mockCards := []interface{}{
+		Card{
+			UserID:   "mock_user_123",
+			CardNo:   "4321-8765-9012-3456",
+			CardType: "credit",
+			Status:   "active",
+			DueDate:  "2026-07-25",
+		},
+		Card{
+			UserID:   "mock_user_123",
+			CardNo:   "5678-1234-5678-4321",
+			CardType: "debit",
+			Status:   "active",
+			DueDate:  "2026-07-25",
+		},
 	}
-	_, err = cardsColl.InsertOne(ctx, mockCard)
+	_, err = cardsColl.InsertMany(ctx, mockCards)
 	if err != nil {
 		return fmt.Errorf("failed to seed card: %w", err)
 	}

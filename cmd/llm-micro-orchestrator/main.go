@@ -124,8 +124,8 @@ func main() {
 			Transport: otelhttp.NewTransport(http.DefaultTransport),
 		},
 		warmingEnabled:   true,
-		extremeThreshold: 0.96,
-		normalThreshold:  0.94,
+		extremeThreshold: 0.90,
+		normalThreshold:  0.70,
 		warmingCancel:    make(map[string]context.CancelFunc),
 	}
 
@@ -430,13 +430,37 @@ func (s *OrchestratorServer) handleFinal(w http.ResponseWriter, r *http.Request)
 			}
 		}
 
-		wordCount := len(strings.Fields(req.Text))
-		bypassCache := len(history) > 0 && wordCount < 3
+		// Detect Prompt Injection or Out-of-Scope queries
+		lowerQuery := strings.ToLower(req.Text)
+		isPromptInjection := strings.Contains(lowerQuery, "ignore all") ||
+			strings.Contains(lowerQuery, "ignore previous") ||
+			strings.Contains(lowerQuery, "system prompt") ||
+			strings.Contains(lowerQuery, "system instruction") ||
+			strings.Contains(lowerQuery, "override")
+		
+		isOutOfScope := strings.Contains(lowerQuery, "story") ||
+			strings.Contains(lowerQuery, "dragon") ||
+			strings.Contains(lowerQuery, "joke") ||
+			strings.Contains(lowerQuery, "weather") ||
+			strings.Contains(lowerQuery, "poem") ||
+			strings.Contains(lowerQuery, "capital of") ||
+			(strings.Contains(lowerQuery, "who is") && !strings.Contains(lowerQuery, "dharmendra"))
 
-		lowerTranscript := strings.ToLower(req.Text)
-		if strings.Contains(lowerTranscript, "transaction") || strings.Contains(lowerTranscript, "balance") || strings.Contains(lowerTranscript, "due") || strings.Contains(lowerTranscript, "block") {
-			bypassCache = false
-		}
+		if isPromptInjection || isOutOfScope {
+			pathType = "deflection"
+			if isHindiText(req.Text) {
+				replyText = "मुझे खेद है, मैं केवल बैंकिंग से संबंधित प्रश्नों में आपकी सहायता कर सकता हूँ।"
+			} else {
+				replyText = "I am sorry, but I can only assist with banking related queries. I cannot help you with other topics."
+			}
+		} else {
+			wordCount := len(strings.Fields(req.Text))
+			bypassCache := len(history) > 0 && wordCount < 3
+
+			lowerTranscript := strings.ToLower(req.Text)
+			if strings.Contains(lowerTranscript, "transaction") || strings.Contains(lowerTranscript, "balance") || strings.Contains(lowerTranscript, "due") || strings.Contains(lowerTranscript, "block") {
+				bypassCache = false
+			}
 
 		var cacheMatched bool
 		var searchRes struct {
@@ -603,10 +627,11 @@ func (s *OrchestratorServer) handleFinal(w http.ResponseWriter, r *http.Request)
 						}
 					}
 				}
-			} else {
-				historyStr := s.SerializeHistory(history)
-				replyText = s.ApplyOutputGuardrailFilter(rawLLMResponse, historyStr)
-				pathType = "llm"
+				} else {
+					historyStr := s.SerializeHistory(history)
+					replyText = s.ApplyOutputGuardrailFilter(rawLLMResponse, historyStr)
+					pathType = "llm"
+				}
 			}
 		}
 	}
