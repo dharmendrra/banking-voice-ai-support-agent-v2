@@ -220,7 +220,7 @@ services:
       retries: 3
       start_period: 10s
     deploy:
-      replicas: 3
+      replicas: 1
 
   media-engine:
     build: .
@@ -235,7 +235,7 @@ services:
       llm-orchestrator-server:
         condition: service_healthy
       livekit:
-        condition: service_healthy
+         condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9082/healthz"]
       interval: 10s
@@ -243,7 +243,7 @@ services:
       retries: 3
       start_period: 10s
     deploy:
-      replicas: 3
+      replicas: 1
 
   livekit:
     image: livekit/livekit-server:latest
