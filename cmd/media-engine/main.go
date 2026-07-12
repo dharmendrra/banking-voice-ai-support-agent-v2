@@ -246,12 +246,14 @@ func (s *MediaEngineServer) handleWebSocket(w http.ResponseWriter, r *http.Reque
 				})
 				req, err := http.NewRequestWithContext(ctx, "POST", s.OrchestratorURL+"/api/partial", bytes.NewBuffer(reqBody))
 				if err != nil {
+					telemetry.RecordError(ctx, err)
 					log.Printf("Error creating partial request: %v", err)
 					return
 				}
 				req.Header.Set("Content-Type", "application/json")
 				resp, err := s.HTTPClient.Do(req)
 				if err != nil {
+					telemetry.RecordError(ctx, err)
 					log.Printf("Error sending partial transcript: %v", err)
 					return
 				}
@@ -306,6 +308,7 @@ func (s *MediaEngineServer) handleWebSocket(w http.ResponseWriter, r *http.Reque
 				})
 				req, err := http.NewRequestWithContext(ctx, "POST", s.OrchestratorURL+"/api/final", bytes.NewBuffer(reqBody))
 				if err != nil {
+					telemetry.RecordError(ctx, err)
 					log.Printf("Error creating final request: %v", err)
 					_ = ws.WriteJSON(map[string]any{
 						"type": "agent_speech",
@@ -316,6 +319,7 @@ func (s *MediaEngineServer) handleWebSocket(w http.ResponseWriter, r *http.Reque
 				req.Header.Set("Content-Type", "application/json")
 				resp, err := s.HTTPClient.Do(req)
 				if err != nil {
+					telemetry.RecordError(ctx, err)
 					log.Printf("Error sending final transcript: %v", err)
 					_ = ws.WriteJSON(map[string]any{
 						"type": "agent_speech",
@@ -332,6 +336,7 @@ func (s *MediaEngineServer) handleWebSocket(w http.ResponseWriter, r *http.Reque
 						if err == io.EOF {
 							break
 						}
+						telemetry.RecordError(ctx, err)
 						log.Printf("Error reading stream chunk: %v", err)
 						break
 					}
@@ -430,12 +435,14 @@ func (s *MediaEngineServer) handleWebSocket(w http.ResponseWriter, r *http.Reque
 				})
 				req, err := http.NewRequestWithContext(ctx, "POST", s.OrchestratorURL+"/api/confirmation", bytes.NewBuffer(reqBody))
 				if err != nil {
+					telemetry.RecordError(ctx, err)
 					log.Printf("Error creating confirmation request: %v", err)
 					return
 				}
 				req.Header.Set("Content-Type", "application/json")
 				resp, err := s.HTTPClient.Do(req)
 				if err != nil {
+					telemetry.RecordError(ctx, err)
 					log.Printf("Error sending confirmation: %v", err)
 					return
 				}
