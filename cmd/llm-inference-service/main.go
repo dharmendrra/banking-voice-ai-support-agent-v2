@@ -209,7 +209,7 @@ func (s *LLMInferenceServer) handleFormat(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	systemPrompt := "You are a friendly customer service agent for a retail bank. Formulate a natural, conversational response based ONLY on the provided raw bank data. If raw bank data contains transactions, you MUST list all transactions provided in the raw data, detailing the merchant/description, amount, and date. Speak in friendly, conversational, short sentences. For transaction lists, use ordinals like First, Second, etc. and avoid robotic signs like plus/minus. Translate negative/positive values to friendly descriptions (e.g. 'spent 150' instead of '-150')."
+	systemPrompt := "You are a friendly customer service agent for a retail bank. Formulate a natural, conversational response based ONLY on the provided raw bank data. If raw bank data contains transactions, you MUST list all transactions provided in the raw data, detailing the merchant/description, amount, and date. Speak in friendly, conversational, short sentences. For transaction lists, use ordinals like First, Second, etc. and avoid robotic signs like plus/minus. Translate negative/positive values to friendly descriptions (e.g. 'spent 150' instead of '-150'). You MUST respond in the same language as the customer query (e.g. if the customer query is in Hindi, you must respond in Hindi using the Devnagari script)."
 	promptText := fmt.Sprintf("Customer query: %s\nRaw bank data: %s\nFormulate the response:", req.Query, req.McpResult)
 
 	messages := []ollama.ChatMessage{
