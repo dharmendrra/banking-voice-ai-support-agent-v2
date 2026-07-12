@@ -76,6 +76,12 @@ func main() {
 
 	orchestratorURL := getEnv("ORCHESTRATOR_URL", "http://localhost:9083")
 	log.Printf("Target Orchestrator Service: %s", orchestratorURL)
+	ttsURL := getEnv("TTS_URL", "http://host.docker.internal:8880")
+	log.Printf("TTS Service URL: %s", ttsURL)
+
+	healthCtx, healthCancel := context.WithCancel(context.Background())
+	defer healthCancel()
+	StartTTSHealthCheck(healthCtx, ttsURL)
 
 	srv := &MediaEngineServer{
 		OrchestratorURL: orchestratorURL,
@@ -106,6 +112,9 @@ func main() {
 
 	// WebSocket handler for client voice transcripts
 	mux.HandleFunc("/ws", srv.handleWebSocket)
+
+	// Healthcheck endpoint
+	mux.HandleFunc("/healthz", srv.handleHealthz)
 
 	server := &http.Server{
 		Addr:    ":9082",
@@ -193,14 +202,29 @@ func (s *MediaEngineServer) handleWebSocket(w http.ResponseWriter, r *http.Reque
 				event, _ := payload["event"].(string)
 				message, _ := payload["message"].(string)
 
-				clientLogger := telemetry.Logger("client-browser")
-				switch level {
-				case "error":
-					clientLogger.ErrorContext(r.Context(), event, "message", message, "session_id", sessionID)
-				case "warn":
-					clientLogger.WarnContext(r.Context(), event, "message", message, "session_id", sessionID)
-				default:
-					clientLogger.InfoContext(r.Context(), event, "message", message, "session_id", sessionID)
+				if event == "stt_health_heartbeat" {
+					sttLogger := telemetry.Logger("voice-ai-stt")
+					var details map[string]any
+					if err := json.Unmarshal([]byte(message), &details); err == nil {
+						var attrs []any
+						attrs = append(attrs, "message", message)
+						for k, v := range details {
+							attrs = append(attrs, k, v)
+						}
+						sttLogger.InfoContext(r.Context(), "stt_heartbeat", attrs...)
+					} else {
+						sttLogger.InfoContext(r.Context(), "stt_heartbeat", "message", message)
+					}
+				} else {
+					clientLogger := telemetry.Logger("client-browser")
+					switch level {
+					case "error":
+						clientLogger.ErrorContext(r.Context(), event, "message", message, "session_id", sessionID)
+					case "warn":
+						clientLogger.WarnContext(r.Context(), event, "message", message, "session_id", sessionID)
+					default:
+						clientLogger.InfoContext(r.Context(), event, "message", message, "session_id", sessionID)
+					}
 				}
 			}
 
@@ -536,4 +560,82 @@ func stripEmojis(s string) string {
 		sb.WriteRune(r)
 	}
 	return strings.TrimSpace(sb.String())
+}
+
+// StartTTSHealthCheck starts a background routine that pings the Kokoro TTS service every 15 seconds.
+func StartTTSHealthCheck(ctx context.Context, ttsURL string) {
+	logger := telemetry.Logger("voice-ai-tts")
+	client := &http.Client{Timeout: 5 * time.Second}
+	ticker := time.NewTicker(15 * time.Second)
+
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				start := time.Now()
+				// Kokoro GET /docs returns 200, GET /v1/audio/speech without body returns 405 (which means server is alive)
+				resp, err := client.Get(ttsURL + "/v1/audio/speech")
+				duration := time.Since(start)
+				durationMS := float64(duration.Nanoseconds()) / 1e6
+
+				logRecord := telemetry.StructuredLog{
+					Timestamp:  time.Now(),
+					Level:      "INFO",
+					Logger:     "voice-ai-tts",
+					Duration:   duration.String(),
+					DurationMS: durationMS,
+				}
+
+				if err != nil || (resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusMethodNotAllowed) {
+					logRecord.Level = "ERROR"
+					if err != nil {
+						logRecord.Message = fmt.Sprintf("Kokoro TTS service connection failed: %v", err)
+					} else {
+						resp.Body.Close()
+						logRecord.Message = fmt.Sprintf("Kokoro TTS service unhealthy: status code %d", resp.StatusCode)
+					}
+					logger.ErrorContext(ctx, logRecord.Message, logRecord.SlogArgs()...)
+				} else {
+					resp.Body.Close()
+					logRecord.Message = "Kokoro TTS is healthy"
+					logger.InfoContext(ctx, logRecord.Message, logRecord.SlogArgs()...)
+				}
+			}
+		}
+	}()
+}
+
+// handleHealthz handles health check requests checking Orchestrator connection.
+func (s *MediaEngineServer) handleHealthz(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, "GET", s.OrchestratorURL+"/healthz", nil)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"status": "unhealthy",
+			"error":  err.Error(),
+		})
+		return
+	}
+
+	resp, err := s.HTTPClient.Do(req)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"status": "unhealthy",
+			"error":  fmt.Sprintf("failed to reach orchestrator: %v", err),
+		})
+		return
+	}
+	defer resp.Body.Close()
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(resp.StatusCode)
+	_, _ = io.Copy(w, resp.Body)
 }

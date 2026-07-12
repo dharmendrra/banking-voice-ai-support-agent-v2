@@ -90,6 +90,12 @@ func main() {
 	mcpServer := mcp.NewBankingMCPServer(mongoMgr)
 	supervisor := llmorchestrator.NewTurnSupervisor(redisMgr, qdrantMgr, ollamaClient, mcpServer, cassandraMgr)
 
+	// Start background consumers for conversation history and audit log
+	consumerCtx, consumerCancel := context.WithCancel(context.Background())
+	defer consumerCancel()
+	llmorchestrator.StartHistoryConsumer(consumerCtx, redisMgr, cassandraMgr)
+	llmorchestrator.StartAuditConsumer(consumerCtx, redisMgr, cassandraMgr)
+
 	srv := &OrchestratorServer{
 		Mongo:         mongoMgr,
 		Redis:         redisMgr,
@@ -101,12 +107,17 @@ func main() {
 		warmingCancel: make(map[string]context.CancelFunc),
 	}
 
+	healthCtx, healthCancel := context.WithCancel(context.Background())
+	defer healthCancel()
+	StartOllamaHealthCheck(healthCtx, ollamaURL)
+
 	mux := http.NewServeMux()
 	mux.Handle("/api/partial", otelhttp.NewHandler(http.HandlerFunc(srv.handlePartial), "partial"))
 	mux.Handle("/api/final", otelhttp.NewHandler(http.HandlerFunc(srv.handleFinal), "final"))
 	mux.Handle("/api/confirmation", otelhttp.NewHandler(http.HandlerFunc(srv.handleConfirmation), "confirmation"))
 	mux.Handle("/api/bank-data", otelhttp.NewHandler(http.HandlerFunc(srv.handleBankData), "bank-data"))
 	mux.Handle("/api/config", otelhttp.NewHandler(http.HandlerFunc(srv.handleConfig), "config"))
+	mux.HandleFunc("/healthz", srv.handleHealthz)
 
 	server := &http.Server{
 		Addr:    ":9083",
@@ -118,6 +129,7 @@ func main() {
 		signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 		<-sigChan
 		log.Println("Shutting down LLM Orchestrator Server...")
+		consumerCancel()
 		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer shutdownCancel()
 		_ = server.Shutdown(shutdownCtx)
@@ -384,6 +396,10 @@ func getEnv(key, fallback string) string {
 
 func withLogging(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/healthz" {
+			next.ServeHTTP(w, r)
+			return
+		}
 		start := time.Now()
 		next.ServeHTTP(w, r)
 		
@@ -401,4 +417,115 @@ func withLogging(next http.Handler) http.Handler {
 		
 		telemetry.Logger("http").InfoContext(r.Context(), "http_request", logRecord.SlogArgs()...)
 	})
+}
+
+// StartOllamaHealthCheck starts a background routine that pings Ollama every 15 seconds.
+func StartOllamaHealthCheck(ctx context.Context, ollamaURL string) {
+	logger := telemetry.Logger("voice-ai-ollama")
+	client := &http.Client{Timeout: 5 * time.Second}
+	ticker := time.NewTicker(15 * time.Second)
+
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				start := time.Now()
+				resp, err := client.Get(ollamaURL + "/")
+				duration := time.Since(start)
+				durationMS := float64(duration.Nanoseconds()) / 1e6
+
+				logRecord := telemetry.StructuredLog{
+					Timestamp:  time.Now(),
+					Level:      "INFO",
+					Logger:     "voice-ai-ollama",
+					Duration:   duration.String(),
+					DurationMS: durationMS,
+				}
+
+				if err != nil || resp.StatusCode != http.StatusOK {
+					logRecord.Level = "ERROR"
+					if err != nil {
+						logRecord.Message = fmt.Sprintf("Ollama connection failed: %v", err)
+					} else {
+						resp.Body.Close()
+						logRecord.Message = fmt.Sprintf("Ollama connection failed: status code %d", resp.StatusCode)
+					}
+					logger.ErrorContext(ctx, logRecord.Message, logRecord.SlogArgs()...)
+				} else {
+					resp.Body.Close()
+					logRecord.Message = "Ollama is healthy"
+					logger.InfoContext(ctx, logRecord.Message, logRecord.SlogArgs()...)
+				}
+			}
+		}
+	}()
+}
+
+// handleHealthz handles health check requests checking Redis, MongoDB, Cassandra, and Ollama.
+func (s *OrchestratorServer) handleHealthz(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+
+	status := "healthy"
+	details := make(map[string]string)
+
+	// Check Redis
+	if err := s.Redis.Client.Ping(ctx).Err(); err != nil {
+		status = "unhealthy"
+		details["redis"] = err.Error()
+	} else {
+		details["redis"] = "healthy"
+	}
+
+	// Check MongoDB
+	if err := s.Mongo.Client.Ping(ctx, nil); err != nil {
+		status = "unhealthy"
+		details["mongodb"] = err.Error()
+	} else {
+		details["mongodb"] = "healthy"
+	}
+
+	// Check Cassandra
+	if err := s.Cassandra.Session.Query("SELECT release_version FROM system.local").WithContext(ctx).Exec(); err != nil {
+		status = "unhealthy"
+		details["cassandra"] = err.Error()
+	} else {
+		details["cassandra"] = "healthy"
+	}
+
+	// Check Ollama
+	req, err := http.NewRequestWithContext(ctx, "GET", s.Ollama.BaseURL+"/", nil)
+	if err != nil {
+		status = "unhealthy"
+		details["ollama"] = err.Error()
+	} else {
+		resp, err := s.Ollama.HTTPClient.Do(req)
+		if err != nil {
+			status = "unhealthy"
+			details["ollama"] = err.Error()
+		} else {
+			resp.Body.Close()
+			if resp.StatusCode != http.StatusOK {
+				status = "unhealthy"
+				details["ollama"] = fmt.Sprintf("status code %d", resp.StatusCode)
+			} else {
+				details["ollama"] = "healthy"
+			}
+		}
+	}
+
+	respBody := map[string]any{
+		"status":  status,
+		"details": details,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if status == "unhealthy" {
+		w.WriteHeader(http.StatusInternalServerError)
+	} else {
+		w.WriteHeader(http.StatusOK)
+	}
+	_ = json.NewEncoder(w).Encode(respBody)
 }

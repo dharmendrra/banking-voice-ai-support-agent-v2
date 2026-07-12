@@ -11,6 +11,8 @@ import (
 	"banking-voice-ai-agent/internal/db"
 	"banking-voice-ai-agent/internal/mcp"
 	"github.com/redis/go-redis/v9"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/propagation"
 )
 
 type ToolExecutionResult struct {
@@ -141,14 +143,21 @@ func (s *ToolCallAuditService) ExecuteToolCall(ctx context.Context, turnID, sess
 
 func (s *ToolCallAuditService) WriteAuditLog(ctx context.Context, turnID, sessionID, userID, toolName string, args map[string]any, result string) {
 	argsBytes, _ := json.Marshal(args)
+
+	// Get traceparent from context using standard OpenTelemetry propagator
+	var tpMap = make(map[string]string)
+	otel.GetTextMapPropagator().Inject(ctx, propagation.MapCarrier(tpMap))
+	traceParent := tpMap["traceparent"]
+
 	event := map[string]interface{}{
-		"timestamp":  time.Now().Format(time.RFC3339),
-		"turn_id":    turnID,
-		"session_id": sessionID,
-		"user_id":    userID,
-		"action":     toolName,
-		"args":       string(argsBytes),
-		"result":     result,
+		"timestamp":   time.Now().Format(time.RFC3339),
+		"turn_id":     turnID,
+		"session_id":  sessionID,
+		"user_id":     userID,
+		"action":      toolName,
+		"args":        string(argsBytes),
+		"result":      result,
+		"traceparent": traceParent, // Inject trace context for async correlation
 	}
 
 	err := s.Redis.Client.XAdd(ctx, &redis.XAddArgs{
@@ -158,6 +167,6 @@ func (s *ToolCallAuditService) WriteAuditLog(ctx context.Context, turnID, sessio
 	if err != nil {
 		log.Printf("[Audit] Failed to write audit event to stream: %v", err)
 	} else {
-		log.Printf("[Audit] Successfully wrote audit event for tool '%s' to stream", toolName)
+		log.Printf("[Audit] Successfully wrote audit event for tool '%s' to stream with traceparent: %s", toolName, traceParent)
 	}
 }

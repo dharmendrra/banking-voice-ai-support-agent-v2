@@ -879,6 +879,10 @@
         };
         let currentUtteranceId = "";
         let activeAudio = null;
+        let streamTextBuffer = "";
+        let processedAnySpeechChunks = false;
+        let suspendedQueue = [];
+        let ignoreIncomingSpeech = false;
 
         function sendClientLog(level, eventName, message) {
             if (socket && socket.readyState === WebSocket.OPEN) {
@@ -922,8 +926,35 @@
                     welcomeBubble.textContent = "Connected. Awaiting welcome greeting...";
                 }
                 
+                // Reset state variables on connect
+                streamTextBuffer = "";
+                processedAnySpeechChunks = false;
+                suspendedQueue = [];
+                ignoreIncomingSpeech = false;
+                
                 sendConfig();
                 fetchBankingData();
+
+                // Start STT health check heartbeat
+                if (!window.sttHealthCheckInterval) {
+                    window.sttHealthCheckInterval = setInterval(() => {
+                        if (socket && socket.readyState === WebSocket.OPEN) {
+                            const isSupported = !!(window.SpeechRecognition || window.webkitSpeechRecognition);
+                            socket.send(JSON.stringify({
+                                type: "client_log",
+                                payload: {
+                                    level: isSupported ? "info" : "error",
+                                    event: "stt_health_heartbeat",
+                                    message: JSON.stringify({
+                                        supported: isSupported,
+                                        active: typeof isListening !== 'undefined' ? isListening : false,
+                                        timestamp: new Date().toISOString()
+                                    })
+                                }
+                            }));
+                        }
+                    }, 15000);
+                }
             };
 
             socket.onclose = () => {
@@ -994,12 +1025,35 @@
                     chatHistoryBox.scrollTop = chatHistoryBox.scrollHeight;
                     break;
                 case 'speech':
+                    if (ignoreIncomingSpeech) {
+                        console.log("[WS] Ignoring speech chunk due to active interruption/barge-in");
+                        break;
+                    }
                     if (!activeAgentBubble) {
                         activeUserBubble = null; // reset user active partials
                         activeAgentBubble = createAgentChatBubble();
                     }
                     activeAgentBubble.textContent += msg.text;
                     chatHistoryBox.scrollTop = chatHistoryBox.scrollHeight;
+
+                    if (!processedAnySpeechChunks) {
+                        processedAnySpeechChunks = true;
+                        currentPlayId++;
+                        audioQueue = [];
+                        suspendedQueue = []; // New speech response started, discard previous backlog
+                        isPlayingQueue = false;
+                        currentlyPlayingItem = null;
+                        if (activeAudio) {
+                            activeAudio.pause();
+                            activeAudio = null;
+                        }
+                        if ('speechSynthesis' in window) {
+                            window.speechSynthesis.cancel();
+                        }
+                        isTTSPlaying = true;
+                        streamTextBuffer = "";
+                    }
+                    handleIncomingSpeechChunk(msg.text);
                     break;
                 case 'agent_speech':
                     // Collapse any active thought box
@@ -1041,7 +1095,18 @@
                         }
                     }
 
-                    speakTTS(msg.text);
+                    if (processedAnySpeechChunks) {
+                        // Flush any remaining text in streamTextBuffer
+                        const remaining = streamTextBuffer.trim();
+                        if (remaining.length > 0) {
+                            enqueueSentence(remaining);
+                        }
+                        streamTextBuffer = "";
+                        processedAnySpeechChunks = false;
+                    } else {
+                        speakTTS(msg.text);
+                    }
+
                     if (msg.latency_ms) {
                         latencyMetric.textContent = `${msg.latency_ms} ms`;
                     }
@@ -1060,23 +1125,38 @@
                         appendChatMessage('agent', msg.text);
                     }
                     confirmBox.style.display = 'flex';
-                    speakTTS(msg.text);
+
+                    if (processedAnySpeechChunks) {
+                        // Flush any remaining text in streamTextBuffer
+                        const remaining = streamTextBuffer.trim();
+                        if (remaining.length > 0) {
+                            enqueueSentence(remaining);
+                        }
+                        streamTextBuffer = "";
+                        processedAnySpeechChunks = false;
+                    } else {
+                        speakTTS(msg.text);
+                    }
                     break;
                 case 'resume_playback':
                     console.log("[Continuation] Received resume_playback command from LLM. Resuming audio queue...");
-                    if (audioQueue && audioQueue.length > 0) {
-                        currentPlayId = audioQueue[0].playId;
+                    ignoreIncomingSpeech = false; // Reset interruption flag so we can barge-in again!
+                    if (suspendedQueue && suspendedQueue.length > 0) {
+                        currentPlayId++;
+                        const myPlayId = currentPlayId;
+                        audioQueue = suspendedQueue.map(item => ({
+                            text: item.text,
+                            playId: myPlayId
+                        }));
+                        suspendedQueue = [];
+                        
+                        // Flag that TTS is active so echo cancellation is aware
+                        isTTSPlaying = true;
+                        
                         processAudioQueue();
                     } else {
-                        console.warn("[Continuation] Local audio queue is empty. Requesting more details...");
-                        if (socket && socket.readyState === WebSocket.OPEN) {
-                            socket.send(JSON.stringify({
-                                type: 'final_transcript',
-                                turn_id: currentUtteranceId,
-                                text: 'tell me more details',
-                                timestamp_ms: Date.now()
-                            }));
-                        }
+                        console.warn("[Continuation] Local suspendedQueue is empty. Synthesizing fallback...");
+                        speakTTS("Sure, continuing where we left off.");
                     }
                     break;
                 case 'banking_data_update':
@@ -1329,6 +1409,16 @@
                 // If it is NOT echo, and the agent is actively speaking, trigger barge-in interruption!
                 const isSpeakingActive = isTTSPlaying || (activeAudio !== null) || ('speechSynthesis' in window && window.speechSynthesis.speaking);
                 if (isSpeakingActive) {
+                    ignoreIncomingSpeech = true;
+                    // Stash remaining queue items for potential resume
+                    suspendedQueue = [];
+                    if (currentlyPlayingItem) {
+                        suspendedQueue.push(currentlyPlayingItem);
+                    }
+                    if (audioQueue && audioQueue.length > 0) {
+                        suspendedQueue.push(...audioQueue);
+                    }
+
                     audioQueue = [];
                     isPlayingQueue = false;
                     currentlyPlayingItem = null;
@@ -1336,8 +1426,8 @@
                     if ('speechSynthesis' in window) window.speechSynthesis.cancel();
                     isTTSPlaying = false;
                     
-                    console.log("[Barge-in] Stopped agent speech because of user speech:", speechText);
-                    sendClientLog('info', 'barge_in', 'Agent interrupted by user.');
+                    console.log("[Barge-in] Stopped agent speech and stashed queue. User speech:", speechText);
+                    sendClientLog('info', 'barge_in', 'Agent interrupted by user. Saved suspendedQueue of size ' + suspendedQueue.length);
                     
                     // Do NOT abort recognition here! Let the user's speech continue to transcribe normally so it reaches finalTranscript and is sent to the backend!
                 }
@@ -1359,6 +1449,7 @@
                     appendChatMessage('user', cleanFinal, false);
 
                     utteranceStartTime = Date.now();
+                    ignoreIncomingSpeech = false;
 
                     if (socket && socket.readyState === WebSocket.OPEN) {
                         socket.send(JSON.stringify({
@@ -1530,6 +1621,56 @@
                     typingInterval = null;
                 }
             }, speed);
+        }
+
+        function handleIncomingSpeechChunk(textChunk) {
+            streamTextBuffer += textChunk;
+            
+            // Split the current buffer by sentence terminators (. ! ? । ॥ \n)
+            // We keep the terminator attached to the sentence
+            const sentenceEndingsRegex = /[^.!?।॥\n]+[.!?।॥\n]+/g;
+            let match;
+            let lastIndex = 0;
+            
+            while ((match = sentenceEndingsRegex.exec(streamTextBuffer)) !== null) {
+                const sentence = match[0].trim();
+                if (sentence.length > 0) {
+                    enqueueSentence(sentence);
+                }
+                lastIndex = sentenceEndingsRegex.lastIndex;
+            }
+            
+            // Keep the remaining incomplete sentence in the buffer
+            streamTextBuffer = streamTextBuffer.substring(lastIndex);
+
+            // Safety threshold split: if the remaining buffer is very long without punctuation,
+            // split it at a space/comma/semicolon boundary to ensure ultra-low TTS output latency.
+            if (streamTextBuffer.length > 150) {
+                const splitIndex = Math.max(
+                    streamTextBuffer.lastIndexOf(' ', 140),
+                    streamTextBuffer.lastIndexOf(',', 140),
+                    streamTextBuffer.lastIndexOf(';', 140)
+                );
+                if (splitIndex > 40) {
+                    const sentence = streamTextBuffer.substring(0, splitIndex).trim();
+                    if (sentence.length > 0) {
+                        enqueueSentence(sentence);
+                    }
+                    streamTextBuffer = streamTextBuffer.substring(splitIndex).trim();
+                }
+            }
+        }
+
+        function enqueueSentence(sentence) {
+            audioQueue.push({
+                text: sentence,
+                playId: currentPlayId
+            });
+            
+            // If the player is currently idle, start playing the first sentence immediately
+            if (!isPlayingQueue) {
+                processAudioQueue();
+            }
         }
 
         let currentPlayId = 0;
@@ -1752,6 +1893,7 @@
 
             // Clear current audio queue and halt any playing streams
             audioQueue = [];
+            suspendedQueue = []; // Clear any suspended backlog on a new full TTS response
             isPlayingQueue = false;
             currentlyPlayingItem = null;
 
@@ -1801,6 +1943,18 @@
                 if (!recognition) setupSpeechRecognition();
 
                 // Stop active agent playback on user tap
+                if (activeAudio || ('speechSynthesis' in window && window.speechSynthesis.speaking) || isTTSPlaying) {
+                    ignoreIncomingSpeech = true;
+                    suspendedQueue = [];
+                    if (currentlyPlayingItem) {
+                        suspendedQueue.push(currentlyPlayingItem);
+                    }
+                    if (audioQueue && audioQueue.length > 0) {
+                        suspendedQueue.push(...audioQueue);
+                    }
+                    console.log("[Mic Tap] Stopped agent speech and stashed queue.");
+                }
+
                 if (activeAudio) {
                     activeAudio.pause();
                     activeAudio = null;
@@ -1809,6 +1963,9 @@
                     window.speechSynthesis.cancel();
                 }
                 audioQueue = [];
+                isPlayingQueue = false;
+                currentlyPlayingItem = null;
+                isTTSPlaying = false;
 
                 if (recognition) recognition.start();
             }
@@ -1817,6 +1974,7 @@
         // Confirmation Actions
         document.getElementById('btn-confirm-yes').addEventListener('click', () => {
             confirmBox.style.display = 'none';
+            ignoreIncomingSpeech = false;
             if (socket && socket.readyState === WebSocket.OPEN) {
                 socket.send(JSON.stringify({
                     type: 'confirmation',
@@ -1828,6 +1986,7 @@
 
         document.getElementById('btn-confirm-no').addEventListener('click', () => {
             confirmBox.style.display = 'none';
+            ignoreIncomingSpeech = false;
             if (socket && socket.readyState === WebSocket.OPEN) {
                 socket.send(JSON.stringify({
                     type: 'confirmation',

@@ -76,7 +76,10 @@ func Init(ctx context.Context, serviceName string) (shutdown func(context.Contex
 	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(
 		propagation.TraceContext{}, propagation.Baggage{}))
 
-	res, _ := resource.New(ctx, resource.WithAttributes(attribute.String("service.name", serviceName)))
+	res, _ := resource.New(ctx, resource.WithAttributes(
+		attribute.String("service.name", serviceName),
+		attribute.String("service.namespace", "voice-ai-agent"),
+	))
 
 	traceExp, _ := otlptracegrpc.New(ctx)
 	tp := sdktrace.NewTracerProvider(sdktrace.WithBatcher(traceExp), sdktrace.WithResource(res))

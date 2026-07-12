@@ -18,6 +18,7 @@ import (
 	"banking-voice-ai-agent/internal/ollama"
 	"banking-voice-ai-agent/internal/telemetry"
 
+	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/otel/attribute"
 )
 
@@ -785,28 +786,39 @@ func isHindiText(text string) bool {
 	return false
 }
 
-// LogConversationTurn logs a single dialogue turn to Cassandra/ScyllaDB asynchronously
+// LogConversationTurn logs a single dialogue turn to Redis Stream conversation_history_stream
 func (s *TurnSupervisor) LogConversationTurn(ctx context.Context, userID, sessionID, role, transcript, intent, action, result string) {
-	if s.Cassandra == nil {
-		return
-	}
 	seqKey := fmt.Sprintf("session:%s:seq", sessionID)
 	seq, err := s.Redis.Client.Incr(ctx, seqKey).Result()
 	if err != nil {
-		log.Printf("[Cassandra log] Warning: failed to increment sequence for session %s: %v", sessionID, err)
+		log.Printf("[Redis log] Warning: failed to increment sequence for session %s: %v", sessionID, err)
 		seq = 1
 	}
 
-	go func() {
-		bgCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-		defer cancel()
-		err := s.Cassandra.LogTurn(bgCtx, userID, sessionID, int(seq), role, transcript, intent, action, result)
-		if err != nil {
-			log.Printf("[Cassandra Error] Failed to write conversation history: %v", err)
-		} else {
-			log.Printf("[Cassandra Success] Recorded turn %d (%s) for session %s", seq, role, sessionID)
-		}
-	}()
+	// Package the turn event
+	payload := map[string]interface{}{
+		"user_id":    userID,
+		"session_id": sessionID,
+		"turn_seq":   int(seq),
+		"role":       role,
+		"transcript": transcript,
+		"intent":     intent,
+		"action":     action,
+		"result":     result,
+		"timestamp":  time.Now().Format(time.RFC3339Nano),
+	}
+
+	// Publish to the stream (low-latency, fire-and-forget)
+	err = s.Redis.Client.XAdd(ctx, &redis.XAddArgs{
+		Stream: "conversation_history_stream",
+		Values: payload,
+	}).Err()
+
+	if err != nil {
+		log.Printf("[Stream Error] Failed to publish turn to history stream: %v", err)
+	} else {
+		log.Printf("[Stream Success] Published turn %d (%s) for session %s to stream", seq, role, sessionID)
+	}
 }
 
 // formatLLMResponse utilizes the LLM to write a friendly customer-facing verbal response from the raw bank data.

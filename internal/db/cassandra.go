@@ -75,6 +75,24 @@ func NewCassandraManager(hosts []string) (*CassandraManager, error) {
 		return nil, fmt.Errorf("failed to create conversation_history table: %w", err)
 	}
 
+	// Create table if not exists for audit logs
+	err = realSession.Query(`
+		CREATE TABLE IF NOT EXISTS audit_logs (
+			user_id text,
+			session_id text,
+			turn_id text,
+			ts timestamp,
+			action text,
+			args text,
+			result text,
+			PRIMARY KEY ((user_id), session_id, turn_id)
+		) WITH CLUSTERING ORDER BY (session_id ASC, turn_id ASC)
+	`).Exec()
+	if err != nil {
+		realSession.Close()
+		return nil, fmt.Errorf("failed to create audit_logs table: %w", err)
+	}
+
 	log.Println("Cassandra/ScyllaDB Keyspace and Tables initialized successfully.")
 	return &CassandraManager{Session: realSession}, nil
 }
@@ -96,4 +114,15 @@ func (c *CassandraManager) LogTurn(ctx context.Context, userID, conversationID s
 	query := `INSERT INTO conversation_history (user_id, conversation_id, turn_seq, ts, role, transcript, intent, action, result) 
 	          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
 	return c.Session.Query(query, userID, conversationID, seq, time.Now(), role, transcript, intent, action, result).WithContext(ctx).Exec()
+}
+
+func (c *CassandraManager) LogAuditEvent(ctx context.Context, userID, sessionID, turnID, action, args, result string) error {
+	ctx, span := telemetry.Step(ctx, "cassandra.log_audit",
+		attribute.String("db.operation", "insert_audit"),
+		attribute.String("db.action", action),
+	)
+	defer span.End()
+	query := `INSERT INTO audit_logs (user_id, session_id, turn_id, ts, action, args, result) 
+	          VALUES (?, ?, ?, ?, ?, ?, ?)`
+	return c.Session.Query(query, userID, sessionID, turnID, time.Now(), action, args, result).WithContext(ctx).Exec()
 }

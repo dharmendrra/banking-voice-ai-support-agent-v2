@@ -80,6 +80,12 @@ services:
         condition: service_healthy
       cassandra:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9083/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     deploy:
       replicas: 3
 
@@ -94,9 +100,15 @@ services:
       - "host.docker.internal:host-gateway"
     depends_on:
       llm-orchestrator-server:
-        condition: service_started
+        condition: service_healthy
       livekit:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9082/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     deploy:
       replicas: 3
 
