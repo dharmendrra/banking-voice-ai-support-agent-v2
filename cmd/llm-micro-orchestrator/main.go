@@ -412,10 +412,15 @@ func (s *OrchestratorServer) handleFinal(w http.ResponseWriter, r *http.Request)
 		}
 
 	} else {
-		// 2. Standard path (context load -> cache -> LLM fallback)
-		var history []ollama.ChatMessage
-		loadBody, _ := json.Marshal(map[string]string{"session_id": req.SessionID})
-		reqCtx, err := http.NewRequestWithContext(ctx, "POST", s.ContextService+"/load", bytes.NewBuffer(loadBody))
+		lowerQuery := strings.ToLower(strings.TrimSpace(req.Text))
+		if lowerQuery == "resume" || lowerQuery == "go on" || lowerQuery == "continue" {
+			pathType = "resume_playback"
+			replyText = ""
+		} else {
+			// 2. Standard path (context load -> cache -> LLM fallback)
+			var history []ollama.ChatMessage
+			loadBody, _ := json.Marshal(map[string]string{"session_id": req.SessionID})
+			reqCtx, err := http.NewRequestWithContext(ctx, "POST", s.ContextService+"/load", bytes.NewBuffer(loadBody))
 		if err == nil {
 			reqCtx.Header.Set("Content-Type", "application/json")
 			resp, err := s.HTTPClient.Do(reqCtx)
@@ -687,10 +692,11 @@ func (s *OrchestratorServer) handleFinal(w http.ResponseWriter, r *http.Request)
 					replyText = s.ApplyOutputGuardrailFilter(rawLLMResponse, historyStr)
 					fmt.Fprintf(os.Stderr, "[DEBUG] Reply Text: %s\n", replyText)
 					pathType = "llm"
-				}
 			}
 		}
 		}
+	}
+	}
 	}
 
 	// 1. Call context-service to append turns (synchronously)

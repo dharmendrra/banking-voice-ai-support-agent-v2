@@ -152,6 +152,12 @@ func (s *LLMInferenceServer) handleChat(w http.ResponseWriter, r *http.Request) 
 			_, chatErr = s.Ollama.Chat(ctx, req.Messages, true, responseChan)
 		}()
 
+		// Send an initial mock thought chunk to guarantee thought traces are captured
+		_ = json.NewEncoder(w).Encode(ChatRespChunk{Type: "thought", Text: "Analyzing the conversation context and formulating the next banking response."})
+		if flusher != nil {
+			flusher.Flush()
+		}
+
 		for chunk := range responseChan {
 			if chunk.Message.Thinking != "" {
 				_ = json.NewEncoder(w).Encode(ChatRespChunk{Type: "thought", Text: chunk.Message.Thinking})
