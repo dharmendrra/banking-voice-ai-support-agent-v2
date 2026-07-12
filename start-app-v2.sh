@@ -198,11 +198,18 @@ while true; do
 done
 echo -e "${GREEN}✓ Databases are healthy and ready.${NC}"
 
-# Open browser to control panel automatically in 2 seconds
-(sleep 2 && open http://localhost:9090) &
+# Open browser to control panel automatically with progress notifications
+(
+    echo -e "${YELLOW}Starting UI / Control Panel...${NC}"
+    sleep 2
+    if open http://localhost:9090; then
+        echo -e "${GREEN}✓ UI / Control Panel started successfully.${NC}"
+    else
+        echo -e "${RED}Error: Failed to open UI browser window automatically.${NC}"
+    fi
+) &
 
 echo -e "${GREEN}✓ Voice Banking Agent Stack is running!${NC}"
-echo -e "${BLUE}Opening dashboard http://localhost:9090 and streaming orchestrator logs...${NC}"
 echo -e "${YELLOW}Press Ctrl+C to stop trailing logs (the containers will keep running).${NC}"
 echo -e "${BLUE}------------------------------------------------------------${NC}"
 
