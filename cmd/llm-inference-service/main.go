@@ -11,6 +11,7 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
+	"strings"
 
 	"banking-voice-ai-agent/internal/ollama"
 	"banking-voice-ai-agent/internal/telemetry"
@@ -315,6 +316,17 @@ func getEnv(key, fallback string) string {
 func isHindiText(text string) bool {
 	for _, r := range text {
 		if r >= 0x0900 && r <= 0x097F {
+			return true
+		}
+	}
+	textLower := strings.ToLower(text)
+	hinglishSpecific := []string{
+		"kitna", "hai", "karna", "paise", "bhejna", "bhejo", "kar do",
+		"pichle", "lenden", "khate", "rupay", "rupaya", "kab", "kya",
+		"sahi", "thik", "haan", "han", "nahi", "nahin", "mera", "mere",
+	}
+	for _, kw := range hinglishSpecific {
+		if strings.Contains(textLower, kw) {
 			return true
 		}
 	}
