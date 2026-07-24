@@ -26,7 +26,7 @@ This diagram details the sequence of operations and real-time data flow (DFD) fo
 ## 🔗 Deep-Dive Documentation
 
 For granular details on our evolutionary designs, implementation details, port mappings, and performance latency reports, please check:
-👉 **[Detailed Engineering & Deployment Manual](./README-detailed.md)**
+👉 **[Detailed Engineering](./README-detailed.md)**
 
 ---
 
