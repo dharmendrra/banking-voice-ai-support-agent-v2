@@ -435,7 +435,7 @@ async def main_async():
                     mock_words = ["okay", "sure"]
                 
                 if expected_path == "greeting":
-                    reply_text = "Hello! Welcome to ICICI Bank support. How can I assist you today?"
+                    reply_text = "Hello! Welcome to Bank support. How can I assist you today?"
                 elif expected_path == "balance_inquiry":
                     reply_text = "Your current savings account balance is 45,000 rupees."
                 elif expected_path == "transactions_list":

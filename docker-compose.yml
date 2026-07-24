@@ -250,7 +250,7 @@ services:
       - "7881:7881"
       - "7882:7882/udp"
     volumes:
-      - ./livekit.yaml:/etc/livekit.yaml
+      - ./configs/livekit.yaml:/etc/livekit.yaml
     healthcheck:
       test: ["CMD", "nc", "-z", "localhost", "7880"]
       interval: 5s
@@ -263,7 +263,7 @@ services:
     ports:
       - "9090:9090"
     volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./configs/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./certs:/etc/nginx/certs:ro
     depends_on:
       - media-engine

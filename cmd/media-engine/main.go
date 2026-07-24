@@ -177,7 +177,7 @@ func (s *MediaEngineServer) handleWebSocket(w http.ResponseWriter, r *http.Reque
 	}()
 
 	// Initial greeting
-	greeting := "Hello Dharmendra, welcome back to ICICI Bank support. How can I help you today?"
+	greeting := "Hello Dharmendra, welcome back to Bank support. How can I help you today?"
 	_ = ws.WriteJSON(map[string]any{
 		"type": "agent_speech",
 		"text": greeting,
@@ -363,7 +363,7 @@ func (s *MediaEngineServer) handleWebSocket(w http.ResponseWriter, r *http.Reque
 								"text":       stripEmojis(replyText),
 								"latency_ms": int64(elapsedMs),
 							})
-							
+
 							logRecord := telemetry.StructuredLog{
 								Timestamp:           time.Now(),
 								Level:               "INFO",
@@ -458,7 +458,7 @@ func (s *MediaEngineServer) handleWebSocket(w http.ResponseWriter, r *http.Reque
 						"text":       stripEmojis(replyText),
 						"latency_ms": int64(elapsedMs),
 					})
-					
+
 					logRecord := telemetry.StructuredLog{
 						Timestamp:           time.Now(),
 						Level:               "INFO",

@@ -1075,7 +1075,7 @@
                         // If it's the very first welcome message, overwrite the initial placeholder bubble
                         const welcomeBubble = document.getElementById('welcome-chat-bubble');
                         if (welcomeBubble && (welcomeBubble.textContent.includes("initialized") || welcomeBubble.textContent.includes("Awaiting") || welcomeBubble.textContent.includes("Disconnected"))) {
-                            if (msg.text.includes("welcome back to ICICI Bank support")) {
+                            if (msg.text.includes("welcome back to Bank support")) {
                                 if (hasGreeted) {
                                     console.log("[WS] Suppressing repeated welcome greeting on reconnect");
                                     welcomeBubble.textContent = "Session active. Speak to start banking.";
@@ -1088,7 +1088,7 @@
                             typewriteText(welcomeBubble, msg.text, 30);
                         } else {
                             // Otherwise append a new agent message bubble
-                            if (msg.text.includes("welcome back to ICICI Bank support")) {
+                            if (msg.text.includes("welcome back to Bank support")) {
                                 if (hasGreeted) {
                                     console.log("[WS] Suppressing repeated welcome greeting on reconnect");
                                     break;

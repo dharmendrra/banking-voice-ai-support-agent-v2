@@ -104,7 +104,7 @@ curl -s -X POST http://localhost:9088/reset > /dev/null
 
 # Run python evaluations
 echo -e "\n${CYAN}[2/3] Executing LLM-as-a-Judge Conversational Evaluation...${NC}"
-python3 tests/evals/run_evals.py --dataset tests/data/golden_dataset.json
+python3 tests/evals/run_evals.py --dataset tests/data/golden_dataset.json --output tests/results/eval_results.json --markdown tests/results/eval_results.md
 
 if [ $? -ne 0 ]; then
   echo -e "${RED}Error: Python evaluation script failed to run!${NC}"
@@ -112,14 +112,14 @@ if [ $? -ne 0 ]; then
 fi
 
 # Parse output score
-if [ ! -f eval_results.json ]; then
-  echo -e "${RED}Error: eval_results.json was not generated!${NC}"
+if [ ! -f tests/results/eval_results.json ]; then
+  echo -e "${RED}Error: tests/results/eval_results.json was not generated!${NC}"
   exit 1
 fi
 
-SCORE=$(jq '.total_score' eval_results.json)
+SCORE=$(jq '.total_score' tests/results/eval_results.json)
 if [ -z "$SCORE" ] || [ "$SCORE" = "null" ]; then
-  echo -e "${RED}Error: Failed to parse total_score from eval_results.json.${NC}"
+  echo -e "${RED}Error: Failed to parse total_score from tests/results/eval_results.json.${NC}"
   exit 1
 fi
 
@@ -163,7 +163,7 @@ while IFS='|' read -r tc_id tc_name tc_status tc_score tc_latency; do
     printf "%-22s | %-35s | ${status_fmt} | ${score_fmt} | ${latency_fmt}\n" \
       "$tc_id" "$tc_name" "$tc_status" "$tc_score" "$latency_col_val"
   fi
-done < <(jq -r '.results[] | "\(.id)|\(.name)|\(.status)|\(.score)|\(.latency_p99_ms)"' eval_results.json)
+done < <(jq -r '.results[] | "\(.id)|\(.name)|\(.status)|\(.score)|\(.latency_p99_ms)"' tests/results/eval_results.json)
 
 echo -e "${BLUE}=========================================================================================${NC}"
 # Overall score gating color
@@ -173,7 +173,7 @@ else
   score_color="${RED}"
 fi
 
-EVALUATOR_TYPE=$(jq -r '.evaluator_type // "Unknown"' eval_results.json)
+EVALUATOR_TYPE=$(jq -r '.evaluator_type // "Unknown"' tests/results/eval_results.json)
 
 echo -e "OVERALL SCORE:  ${score_color}${BOLD}${SCORE}%${NC}  (Required Gating Threshold: 95.0%)"
 echo -e "EVALUATOR TYPE: ${CYAN}${BOLD}${EVALUATOR_TYPE}${NC}"
