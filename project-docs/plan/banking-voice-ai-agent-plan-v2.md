@@ -24,7 +24,7 @@ end-of-utterance) while still bailing out of the LLM early on the **hits**.
 > production topology: no L4/L7 load balancers, no Envoy/API gateway, no service
 > mesh, no Apache Kafka, **no redundant/scaled instances (multiple media
 > engines / orchestrators / LLM workers), and no cross-instance failover.**
-> `docs/production-architecture.drawio.svg` and `docs/FAILOVER.md` are
+> `project-docs/plan/production-architecture.drawio.svg` and `project-docs/plan/pending/FAILOVER.md` are
 > **production reference only** — they show what the scaffold maps to at scale,
 > not what to build now. Where those docs name a production component (e.g.
 > Kafka), the scaffold uses the local stand-in named in this plan (e.g. Redis
@@ -361,7 +361,7 @@ calls**. The agent never persists this data. (Local stand-in for the production
   bank **dedupes on it** — a repeat returns "Duplicate transaction". The scaffold
   simulates this with a **unique index** on `unique_ref_no`. Reconcile an
   indeterminate outcome by re-submitting the *same* reference; never a new one
-  (see `docs/FAILOVER.md` §B3).
+  (see `project-docs/plan/pending/FAILOVER.md` §B3).
 - **Identity:** no auth locally (out of scope) — a **fixed mock `user_id`** per
   session is injected into every MCP call.
 - Informational content (FAQs, bank docs) does **not** use this path — it is
@@ -378,7 +378,7 @@ calls**. The agent never persists this data. (Local stand-in for the production
   stable partial tokens as the customer speaks (this is the whole premise; unlike
   a final-only setup, v2 *requires* streaming STT).
 - **LLM system prompt:** author the **deflector/guardrail prompt** per §6 /
-  `docs/HALLUCINATION_GUARDRAILS.md`.
+  `project-docs/plan/done/HALLUCINATION_GUARDRAILS.md`.
 - **Cache seed:** ~5 action intents (balance, transactions, transfer, card block,
   due date) + ~5–10 FAQs from bank public docs; embed + upsert via a bootstrap
   script.
@@ -497,7 +497,7 @@ baseline (§7):
   escalation-rate eval metric), and park/end the session.
 - **Live-path failure** (MCP timeout, MongoDB down, Ollama error): speak a
   localized "I'm having trouble accessing that right now" and **escalate/end**.
-  Retry idempotent **reads** once; **never** retry writes (`docs/FAILOVER.md`).
+  Retry idempotent **reads** once; **never** retry writes (`project-docs/plan/pending/FAILOVER.md`).
   Log the failure.
 - **Conversation context / session lifetime:** rolling **last ~5 turns** in Redis
   for follow-up resolution + the LLM prompt; session **TTL ~30 min**; **purge on
@@ -515,7 +515,7 @@ baseline (§7):
 - **Phase 5 — Load-shedding knob:** GPU watermark → disable warming → sequential
   fallback (§8).
 - **Phase 6 — Evals (prove correctness, gate regressions):** versioned golden sets
-  + a replay harness + CI gate — see `docs/EVALS.md`. **Release-blocking:**
+  + a replay harness + CI gate — see `project-docs/plan/pending/EVALS.md`. **Release-blocking:**
   money-movement safety (confirmation, never-on-partial, duplicate-ref rejected,
   never blind re-send) and guardrail/hallucination red-team. **Trend-gated:**
   intent-dispatch accuracy (also **tunes `EXTREME`/`NORMAL`/`0.94` offline**), STT

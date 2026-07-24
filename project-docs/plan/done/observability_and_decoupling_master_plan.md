@@ -8,13 +8,13 @@ This master plan coordinates all modular plans designed today to achieve high-pr
 
 | Sub-Plan | Purpose & Scope | Target File |
 | :--- | :--- | :--- |
-| **APM & Unified Namespace** | Sets up `voice-ai-agent` namespace telemetry, Nginx ingress proxy logs, and custom OTel resource metrics. | [apm_plan.md](file:///Users/dharmendra/golang-projects/banking-voice-ai-support-agent-v2/docs/plan/apm_plan.md) |
-| **Background Model Health** | Establishes background pull-based probes and logging for STT, TTS, and Ollama. | [background_health_plan.md](file:///Users/dharmendra/golang-projects/banking-voice-ai-support-agent-v2/docs/plan/background_health_plan.md) |
-| **History Consumer** | Decouples Cassandra database writes from the live orchestrator thread using Redis Streams. | [history_consumer_plan.md](file:///Users/dharmendra/golang-projects/banking-voice-ai-support-agent-v2/docs/plan/history_consumer_plan.md) |
-| **Audit Log Consumer** | Handles async secure compliance tool audit logs, ensuring zero latency impact on the user call path. | [audit_consumer_plan.md](file:///Users/dharmendra/golang-projects/banking-voice-ai-support-agent-v2/docs/plan/audit_consumer_plan.md) |
-| **8-Service Decoupling** | Refactors the orchestrator monolith into stateless components for context, cache, inference, and tools. | [decoupled_orchestrator_plan.md](file:///Users/dharmendra/golang-projects/banking-voice-ai-support-agent-v2/docs/plan/decoupled_orchestrator_plan.md) |
-| **Decoupled Telemetry Specs** | Outlines explicit OTel spans, attributes, and ClickHouse queries for all decoupled components. | [decoupled_telemetry_plan.md](file:///Users/dharmendra/golang-projects/banking-voice-ai-support-agent-v2/docs/plan/decoupled_telemetry_plan.md) |
-| **Streaming & Chunked TTS** | Implements sentence-by-sentence streaming playback with user barge-in / resume states. | [streaming_tts_plan.md](file:///Users/dharmendra/golang-projects/banking-voice-ai-support-agent-v2/docs/plan/streaming_tts_plan.md) |
+| **APM & Unified Namespace** | Sets up `voice-ai-agent` namespace telemetry, Nginx ingress proxy logs, and custom OTel resource metrics. | [apm_plan.md](file:///Users/dharmendra/golang-projects/banking-voice-ai-support-agent-v2/project-docs/plan/done/apm_plan.md) |
+| **Background Model Health** | Establishes background pull-based probes and logging for STT, TTS, and Ollama. | [background_health_plan.md](file:///Users/dharmendra/golang-projects/banking-voice-ai-support-agent-v2/project-docs/plan/done/background_health_plan.md) |
+| **History Consumer** | Decouples Cassandra database writes from the live orchestrator thread using Redis Streams. | [history_consumer_plan.md](file:///Users/dharmendra/golang-projects/banking-voice-ai-support-agent-v2/project-docs/plan/done/history_consumer_plan.md) |
+| **Audit Log Consumer** | Handles async secure compliance tool audit logs, ensuring zero latency impact on the user call path. | [audit_consumer_plan.md](file:///Users/dharmendra/golang-projects/banking-voice-ai-support-agent-v2/project-docs/plan/done/audit_consumer_plan.md) |
+| **8-Service Decoupling** | Refactors the orchestrator monolith into stateless components for context, cache, inference, and tools. | [decoupled_orchestrator_plan.md](file:///Users/dharmendra/golang-projects/banking-voice-ai-support-agent-v2/project-docs/plan/done/decoupled_orchestrator_plan.md) |
+| **Decoupled Telemetry Specs** | Outlines explicit OTel spans, attributes, and ClickHouse queries for all decoupled components. | [decoupled_telemetry_plan.md](file:///Users/dharmendra/golang-projects/banking-voice-ai-support-agent-v2/project-docs/plan/done/decoupled_telemetry_plan.md) |
+| **Streaming & Chunked TTS** | Implements sentence-by-sentence streaming playback with user barge-in / resume states. | [streaming_tts_plan.md](file:///Users/dharmendra/golang-projects/banking-voice-ai-support-agent-v2/project-docs/plan/done/streaming_tts_plan.md) |
 
 ---
 

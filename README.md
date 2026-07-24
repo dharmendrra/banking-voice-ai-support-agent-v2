@@ -9,17 +9,17 @@ A production-grade, low-latency, highly decoupled Voice AI banking agent built f
 ### 1. Basic Voice AI Flow
 This shows the sequential block flow of a standard Voice AI turn: capturing user microphone input, transcribing to text, generating an agent response, synthesizing to audio speech, and playing it back.
 
-![Basic Flow](docs/images/basic_flow.jpg)
+![Basic Flow](project-docs/images/basic_flow.jpg)
 
 ### 2. High-Level Design (HLD / HDD)
 This diagram illustrates the fully decoupled 8-service architecture. Nginx serves as the single WebSocket entry point, balancing traffic to media engine replicas, which talk to the stateless micro-orchestrator. Data writes, caching, and analytics are isolated across Redis, MongoDB, Qdrant, and Cassandra.
 
-![High-Level Design](docs/images/hdd_architecture.jpg)
+![High-Level Design](project-docs/images/hdd_architecture.jpg)
 
 ### 3. Low-Level Design & Data Flow Diagram (LLD / DFD)
 This diagram details the sequence of operations and real-time data flow (DFD) for a single user utterance. Audio streaming, Speech-to-Text, parallel vector cache probes, LLM generation, tool validation, and Text-to-Speech synthesis execute in a low-latency pipeline, while transaction logging is offloaded asynchronously to Cassandra.
 
-![Low-Level Design](docs/images/lld_sequence_clean.jpg)
+![Low-Level Design](project-docs/images/lld_sequence_clean.jpg)
 
 ---
 
