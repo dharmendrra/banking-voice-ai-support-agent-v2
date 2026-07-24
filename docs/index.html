@@ -26,26 +26,26 @@
 
     <style>
         :root {
-            /* Premium dark theme - matches the dashboard */
-            --bg: #0a0c10;
-            --bg-alt: #121620;
-            --bg-soft: #1a2030;
-            --panel: #121620;
-            --text: #f5f6fa;
-            --text-strong: #ffffff;
-            --text-muted: #a4b0be;
-            --text-faint: #747d8c;
-            --border: #2f3542;
-            --border-soft: #3f4a60;
-            --accent: #6c5ce7; /* violet */
-            --accent-bright: #a55eea;
-            --accent-dark: #482ff7;
-            --accent-soft: rgba(108, 92, 231, 0.12);
-            --accent-border: rgba(108, 92, 231, 0.30);
-            --teal: #00cec9;
-            --teal-soft: rgba(0, 206, 201, 0.12);
-            --shadow: 0 1px 2px rgba(0,0,0,.4), 0 18px 50px rgba(0,0,0,.45);
-            --glow: 0 0 40px rgba(108, 92, 231, 0.15);
+            /* Premium light theme - matches Omni-RAG style */
+            --bg: #ffffff;
+            --bg-alt: #f8fafc;
+            --bg-soft: #f1f5f9;
+            --panel: #ffffff;
+            --text: #0f172a;
+            --text-strong: #020617;
+            --text-muted: #475569;
+            --text-faint: #64748b;
+            --border: #e2e8f0;
+            --border-soft: #cbd5e1;
+            --accent: #4f46e5; /* indigo */
+            --accent-bright: #6366f1;
+            --accent-dark: #3730a3;
+            --accent-soft: rgba(79, 70, 229, 0.08);
+            --accent-border: rgba(79, 70, 229, 0.20);
+            --teal: #0d9488;
+            --teal-soft: rgba(13, 148, 136, 0.08);
+            --shadow: 0 1px 2px rgba(15,23,42,.04), 0 8px 24px rgba(15,23,42,.06);
+            --glow: 0 0 40px rgba(79, 70, 229, 0.08);
             --maxw: 1120px;
         }
 
@@ -59,7 +59,7 @@
             line-height: 1.65;
             -webkit-font-smoothing: antialiased;
         }
-        a { color: var(--accent-bright); text-decoration: none; }
+        a { color: var(--accent); text-decoration: none; }
         a:hover { text-decoration: underline; }
         code, .mono { font-family: 'JetBrains Mono', ui-monospace, monospace; }
 
@@ -75,7 +75,7 @@
         /* ---------- Nav ---------- */
         header.nav {
             position: sticky; top: 0; z-index: 50;
-            background: rgba(10, 12, 16, 0.82);
+            background: rgba(255, 255, 255, 0.82);
             backdrop-filter: saturate(160%) blur(12px);
             border-bottom: 1px solid var(--border);
         }
@@ -92,8 +92,8 @@
 
         /* ---------- Hero ---------- */
         .hero { padding: 88px 0 64px; background:
-            radial-gradient(900px 380px at 80% -10%, rgba(108, 92, 231, 0.14), transparent 60%),
-            radial-gradient(700px 320px at 10% 0%, rgba(0, 206, 201, 0.08), transparent 60%); }
+            radial-gradient(900px 380px at 80% -10%, rgba(79, 70, 229, 0.06), transparent 60%),
+            radial-gradient(700px 320px at 10% 0%, rgba(13, 148, 136, 0.04), transparent 60%); }
         .hero h1 { font-size: clamp(2.4rem, 6vw, 3.7rem); font-weight: 800; }
         .hero h1 .accent { color: var(--accent-bright); }
         .hero .tagline { font-size: 1.18rem; color: var(--text-muted); max-width: 720px; margin-top: 10px; }
