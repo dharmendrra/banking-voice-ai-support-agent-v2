@@ -347,17 +347,37 @@ func isHindiText(text string) bool {
 			return true
 		}
 	}
+	
 	textLower := strings.ToLower(text)
-	hinglishSpecific := []string{
-		"kitna", "hai", "karna", "paise", "bhejna", "bhejo", "kar do",
-		"pichle", "lenden", "khate", "rupay", "rupaya", "kab", "kya",
-		"sahi", "thik", "haan", "han", "nahi", "nahin", "mera", "mere",
+	cleaned := strings.Map(func(r rune) rune {
+		if (r >= 'a' && r <= 'z') || r == ' ' {
+			return r
+		}
+		return ' '
+	}, textLower)
+	
+	words := strings.Fields(cleaned)
+	
+	hinglishSpecific := map[string]bool{
+		"kitna": true, "hai": true, "karna": true, "paise": true, "bhejna": true,
+		"bhejo": true, "pichle": true, "lenden": true, "khate": true,
+		"rupay": true, "rupaya": true, "kab": true, "kya": true, "sahi": true,
+		"thik": true, "haan": true, "han": true, "nahi": true, "nahin": true,
+		"mera": true, "mere": true, "mujhe": true, "dikhao": true, "kaise": true,
+		"ho": true, "namaste": true, "batao": true, "bataayein": true, "bataiye": true,
+		"dikhaiye": true, "dikhayein": true, "karo": true, "kijiye": true,
 	}
-	for _, kw := range hinglishSpecific {
-		if strings.Contains(textLower, kw) {
+	
+	for _, w := range words {
+		if hinglishSpecific[w] {
 			return true
 		}
 	}
+	
+	if strings.Contains(textLower, "kar do") {
+		return true
+	}
+	
 	return false
 }
 
