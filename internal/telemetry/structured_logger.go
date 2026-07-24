@@ -22,6 +22,9 @@ type StructuredLog struct {
 	Duration             string  `json:"duration,omitempty"`              // e.g. "3.51ms", "2.14s"
 	DurationMS           float64 `json:"duration_ms,omitempty"`           // Raw milliseconds for aggregation
 	PostSpeechLatencyMS  float64 `json:"post_speech_latency_ms,omitempty"` // User end-of-speech to agent response latency
+	TTFTMs               float64 `json:"ttft_ms,omitempty"`               // Client-perceived Time to First Token
+	TTSPlaybackStartMs  float64 `json:"tts_playback_start_ms,omitempty"` // Time for TTS to start playing after token arrival
+	E2ELatencyMs        float64 `json:"e2e_latency_ms,omitempty"`        // Total acoustic end to TTS play latency
 
 	// Context Metadata
 	SessionID string `json:"session_id,omitempty"`
@@ -81,6 +84,15 @@ func (l StructuredLog) LogValue() slog.Value {
 	}
 	if l.PostSpeechLatencyMS != 0 {
 		attrs = append(attrs, slog.Float64("post_speech_latency_ms", l.PostSpeechLatencyMS))
+	}
+	if l.TTFTMs != 0 {
+		attrs = append(attrs, slog.Float64("ttft_ms", l.TTFTMs))
+	}
+	if l.TTSPlaybackStartMs != 0 {
+		attrs = append(attrs, slog.Float64("tts_playback_start_ms", l.TTSPlaybackStartMs))
+	}
+	if l.E2ELatencyMs != 0 {
+		attrs = append(attrs, slog.Float64("e2e_latency_ms", l.E2ELatencyMs))
 	}
 	if l.SessionID != "" {
 		attrs = append(attrs, slog.String("session_id", l.SessionID))
@@ -147,6 +159,15 @@ func (l StructuredLog) SlogArgs() []any {
 	}
 	if l.PostSpeechLatencyMS != 0 {
 		args = append(args, slog.Float64("post_speech_latency_ms", l.PostSpeechLatencyMS))
+	}
+	if l.TTFTMs != 0 {
+		args = append(args, slog.Float64("ttft_ms", l.TTFTMs))
+	}
+	if l.TTSPlaybackStartMs != 0 {
+		args = append(args, slog.Float64("tts_playback_start_ms", l.TTSPlaybackStartMs))
+	}
+	if l.E2ELatencyMs != 0 {
+		args = append(args, slog.Float64("e2e_latency_ms", l.E2ELatencyMs))
 	}
 	if l.SessionID != "" {
 		args = append(args, slog.String("session_id", l.SessionID))

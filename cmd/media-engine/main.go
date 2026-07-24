@@ -195,6 +195,27 @@ func (s *MediaEngineServer) handleWebSocket(w http.ResponseWriter, r *http.Reque
 			// Forward config to orchestrator
 			go s.forwardConfig(msg.Payload)
 
+		case "latency_metrics":
+			payload, ok := msg.Payload.(map[string]any)
+			if ok {
+				ttft, _ := payload["ttft_ms"].(float64)
+				ttsStart, _ := payload["tts_playback_start_ms"].(float64)
+				e2e, _ := payload["e2e_latency_ms"].(float64)
+
+				logRecord := telemetry.StructuredLog{
+					Timestamp:          time.Now(),
+					Level:              "INFO",
+					Message:            "Client-reported latency metrics",
+					Logger:             "media-engine",
+					TTFTMs:             ttft,
+					TTSPlaybackStartMs: ttsStart,
+					E2ELatencyMs:       e2e,
+					SessionID:          sessionID,
+					TurnID:             msg.TurnID,
+				}
+				telemetry.Logger("media-engine").InfoContext(r.Context(), "client_latency_metrics", logRecord.SlogArgs()...)
+			}
+
 		case "client_log":
 			payload, ok := msg.Payload.(map[string]any)
 			if ok {

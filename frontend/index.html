@@ -621,8 +621,7 @@
             background-color: var(--bg-tertiary);
             border: 1px solid var(--border-color);
             border-radius: 6px;
-            padding: 0.4rem;
-            text-align: center;
+            padding: 0.6rem;
             font-size: 0.8rem;
             margin-top: 0.5rem;
         }
@@ -826,8 +825,23 @@
                         <input type="range" id="normal-slider" min="0.50" max="0.85" step="0.01" value="0.70">
                     </div>
 
-                    <div class="latency-badge">
-                        Post-Speech Latency: <span class="latency-val" id="latency-metric">-- ms</span>
+                    <div class="latency-badge" style="display: flex; flex-direction: column; gap: 0.25rem; text-align: left;">
+                        <div style="display: flex; justify-content: space-between;">
+                            <span>Post-Speech Latency:</span>
+                            <span class="latency-val" id="latency-metric">-- ms</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between;">
+                            <span>TTFT (Client):</span>
+                            <span class="latency-val" id="ttft-metric">-- ms</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between;">
+                            <span>TTS Playback Delay:</span>
+                            <span class="latency-val" id="tts-metric">-- ms</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between;">
+                            <span>End-to-End Latency:</span>
+                            <span class="latency-val" id="e2e-metric">-- ms</span>
+                        </div>
                     </div>
                 </div>
 
@@ -873,6 +887,12 @@
         let utteranceStartTime = 0;
         let lastSTTStartTime = 0;
         let consecutiveQuickEnds = 0;
+
+        let userSpeechEndTs = 0;        // Timestamp when user stopped speaking (onspeechend)
+        let finalTranscriptSentTs = 0;  // Timestamp when final_transcript was sent to backend
+        let firstTokenReceivedTs = 0;   // Timestamp when first 'speech' chunk was received
+        let ttsStartPlayTs = 0;         // Timestamp when first chunk started playing
+        let isFirstSpeechChunk = false; // Flag to capture only the first chunk of a turn
 
         // Global Error Handler to print browser errors on the screen terminal
         window.onerror = function(message, source, lineno, colno, error) {
@@ -1033,6 +1053,9 @@
                         console.log("[WS] Ignoring speech chunk due to active interruption/barge-in");
                         break;
                     }
+                    if (isFirstSpeechChunk && firstTokenReceivedTs === 0) {
+                        firstTokenReceivedTs = Date.now();
+                    }
                     if (!activeAgentBubble) {
                         activeUserBubble = null; // reset user active partials
                         activeAgentBubble = createAgentChatBubble();
@@ -1060,6 +1083,9 @@
                     handleIncomingSpeechChunk(msg.text);
                     break;
                 case 'agent_speech':
+                    if (isFirstSpeechChunk && firstTokenReceivedTs === 0) {
+                        firstTokenReceivedTs = Date.now();
+                    }
                     // Collapse any active thought box
                     if (activeThoughtBox) {
                         activeThoughtBox.removeAttribute('open');
@@ -1116,6 +1142,9 @@
                     }
                     break;
                 case 'confirmation_required':
+                    if (isFirstSpeechChunk && firstTokenReceivedTs === 0) {
+                        firstTokenReceivedTs = Date.now();
+                    }
                     // Collapse any active thought box
                     if (activeThoughtBox) {
                         activeThoughtBox.removeAttribute('open');
@@ -1319,6 +1348,11 @@
             recognition.interimResults = true;
             recognition.lang = 'en-US';
 
+            recognition.onspeechend = () => {
+                userSpeechEndTs = Date.now();
+                console.log("[STT] User ended speaking (acoustic end).");
+            };
+
             recognition.onstart = () => {
                 isListening = true;
                 isSTTStarting = false;
@@ -1482,15 +1516,20 @@
                     const cleanFinal = finalTranscript.trim();
                     appendChatMessage('user', cleanFinal, false);
 
-                    utteranceStartTime = Date.now();
+                    finalTranscriptSentTs = Date.now();
+                    if (userSpeechEndTs === 0) {
+                        userSpeechEndTs = finalTranscriptSentTs;
+                    }
                     ignoreIncomingSpeech = false;
+                    isFirstSpeechChunk = true;
+                    firstTokenReceivedTs = 0; // reset for this turn
 
                     if (socket && socket.readyState === WebSocket.OPEN) {
                         socket.send(JSON.stringify({
                             type: 'final_transcript',
                             turn_id: currentUtteranceId,
                             text: cleanFinal,
-                            timestamp_ms: utteranceStartTime
+                            timestamp_ms: finalTranscriptSentTs
                         }));
                     }
                 }
@@ -1714,7 +1753,7 @@
         let activeUtterance = null; // Prevent native speechSynthesis GC
 
         // Web Speech API TTS (Fallback for chunks)
-        function speakNativeTTSChunk(text, isHindi, playId) {
+        function speakNativeTTSChunk(text, isHindi, playId, isFirstChunk) {
             if (playId !== currentPlayId) {
                 isPlayingQueue = false;
                 processAudioQueue();
@@ -1723,6 +1762,13 @@
             if ('speechSynthesis' in window) {
                 const utterance = new SpeechSynthesisUtterance(text);
                 activeUtterance = utterance; // Prevent garbage collection!
+                
+                if (isFirstChunk) {
+                    utterance.onstart = () => {
+                        recordAndReportTTSStart();
+                    };
+                }
+                
                 utterance.rate = 1.05; // Slightly faster for natural banking flow
                 utterance.pitch = 1.0;
                 
@@ -1756,7 +1802,7 @@
         }
 
         // Fallback to Google Translate TTS (for chunks)
-        function speakGoogleTTSChunk(text, isHindi, playId) {
+        function speakGoogleTTSChunk(text, isHindi, playId, isFirstChunk) {
             if (playId !== currentPlayId) {
                 isPlayingQueue = false;
                 processAudioQueue();
@@ -1766,6 +1812,13 @@
             try {
                 const url = `https://translate.google.com/translate_tts?ie=UTF-8&tl=${lang}&client=tw-ob&q=${encodeURIComponent(text)}`;
                 activeAudio = new Audio(url);
+                
+                if (isFirstChunk) {
+                    activeAudio.addEventListener('playing', () => {
+                        recordAndReportTTSStart();
+                    });
+                }
+                
                 activeAudio.addEventListener('ended', () => {
                     isPlayingQueue = false;
                     activeAudio = null;
@@ -1791,12 +1844,12 @@
                     }
                     console.warn("[TTS] Google chunk playback failed, falling back to native:", err);
                     sendClientLog('warn', 'google_tts_failed', 'Google Translate TTS playback failed: ' + err.message);
-                    speakNativeTTSChunk(text, isHindi, playId);
+                    speakNativeTTSChunk(text, isHindi, playId, isFirstChunk);
                 });
             } catch (e) {
                 console.warn("[TTS] Google chunk initialization failed, falling back to native:", e);
                 sendClientLog('warn', 'google_tts_init_failed', 'Google Translate TTS initialization failed: ' + e.message);
-                speakNativeTTSChunk(text, isHindi, playId);
+                speakNativeTTSChunk(text, isHindi, playId, isFirstChunk);
             }
         }
 
@@ -1847,12 +1900,17 @@
                 return;
             }
 
+            const isFirstAudioChunkOfTurn = isFirstSpeechChunk;
+            if (isFirstAudioChunkOfTurn) {
+                isFirstSpeechChunk = false; // consume
+            }
+
             // Check if System Native TTS is selected for instant 0ms playback
             const ttsSelect = document.getElementById('tts-engine-select');
             if (ttsSelect && ttsSelect.value === 'native') {
                 const text = nextItem.text;
                 const isHindi = /[\u0900-\u097F]/.test(text) || /\b(namaste|namaskar|aap|kaise|hain|achha|ji|shukriya|hai|ko|se|ki|kya|bhai|karke|sakte|taraf)\b/i.test(text);
-                speakNativeTTSChunk(text, isHindi, nextItem.playId);
+                speakNativeTTSChunk(text, isHindi, nextItem.playId, isFirstAudioChunkOfTurn);
                 return;
             }
 
@@ -1890,6 +1948,13 @@
                     }
                     const audioUrl = URL.createObjectURL(blob);
                     activeAudio = new Audio(audioUrl);
+                    
+                    if (isFirstAudioChunkOfTurn) {
+                        activeAudio.addEventListener('playing', () => {
+                            recordAndReportTTSStart();
+                        });
+                    }
+                    
                     activeAudio.addEventListener('ended', () => {
                         isPlayingQueue = false;
                         activeAudio = null;
@@ -1916,20 +1981,20 @@
                         }
                         console.warn("[TTS] Kokoro chunk play failed, falling back to Google TTS:", err);
                         sendClientLog('warn', 'kokoro_play_failed', 'Kokoro playback failed: ' + err.message);
-                        speakGoogleTTSChunk(text, isHindi, nextItem.playId);
+                        speakGoogleTTSChunk(text, isHindi, nextItem.playId, isFirstAudioChunkOfTurn);
                     });
                 })
                 .catch(err => {
                     if (nextItem.playId !== currentPlayId) return;
                     console.warn("[TTS] Kokoro chunk synthesis failed, falling back to Google TTS:", err);
                     sendClientLog('warn', 'kokoro_synthesis_failed', 'Kokoro synthesis failed: ' + err.message);
-                    speakGoogleTTSChunk(text, isHindi, nextItem.playId);
+                    speakGoogleTTSChunk(text, isHindi, nextItem.playId, isFirstAudioChunkOfTurn);
                 });
             } catch (e) {
                 if (nextItem.playId !== currentPlayId) return;
                 console.warn("[TTS] Kokoro chunk initialization failed, falling back to Google TTS:", e);
                 sendClientLog('warn', 'kokoro_init_failed', 'Kokoro initialization failed: ' + e.message);
-                speakGoogleTTSChunk(text, isHindi, nextItem.playId);
+                speakGoogleTTSChunk(text, isHindi, nextItem.playId, isFirstAudioChunkOfTurn);
             }
         }
 
@@ -2056,10 +2121,45 @@
             }
         });
 
+        function recordAndReportTTSStart() {
+            ttsStartPlayTs = Date.now();
+
+            const ttft = firstTokenReceivedTs - finalTranscriptSentTs;
+            const ttsStartDelay = ttsStartPlayTs - firstTokenReceivedTs;
+            const e2eLatency = ttsStartPlayTs - userSpeechEndTs;
+
+            console.log(`[Latency Metrics] TTFT: ${ttft}ms | TTS Delay: ${ttsStartDelay}ms | E2E: ${e2eLatency}ms`);
+
+            // Send metrics back to backend via WebSocket
+            if (socket && socket.readyState === WebSocket.OPEN) {
+                socket.send(JSON.stringify({
+                    type: 'latency_metrics',
+                    turn_id: currentUtteranceId,
+                    payload: {
+                        ttft_ms: ttft,
+                        tts_playback_start_ms: ttsStartDelay,
+                        e2e_latency_ms: e2eLatency
+                    }
+                }));
+            }
+
+            // Update UI elements
+            updateLatencyUI(ttft, ttsStartDelay, e2eLatency);
+        }
+
+        function updateLatencyUI(ttft, ttsStartDelay, e2eLatency) {
+            const ttftMetric = document.getElementById('ttft-metric');
+            const ttsMetric = document.getElementById('tts-metric');
+            const e2eMetric = document.getElementById('e2e-metric');
+            if (ttftMetric) ttftMetric.textContent = `${ttft} ms`;
+            if (ttsMetric) ttsMetric.textContent = `${ttsStartDelay} ms`;
+            if (e2eMetric) e2eMetric.textContent = `${e2eLatency} ms`;
+        }
+
         // STT Watchdog: checks every 2 seconds to recover from silent Chrome STT drops
         setInterval(() => {
             if (shouldBeListening && !isListening && !isSTTStarting && !isHalted) {
-                console.log("[STT Watchdog] Detected microphone silent stop. Resurrecting...");
+                console.log("[STT] Watchdog active. Re-syncing browser recognition...");
                 resumeSpeechIfNeeded();
             }
         }, 2000);
