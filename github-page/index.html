@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Voice AI Support Agent v2 — Multilingual Banking Edge</title>
+    <meta name="description" content="A production-grade, low-latency, multilingual Voice AI banking agent in Go. Dynamic English/Hindi Turn Supervisor, speculative cache probing to bypass LLM latency, WebRTC gateway, and Cassandra audit logs." />
+
+    <!-- Open Graph / social preview -->
+    <meta property="og:title" content="Voice AI Support Agent v2 — Multilingual Banking Edge" />
+    <meta property="og:description" content="Voice assistant in Go. Swappable English/Hindi Turn Supervisor. Speculative cache probing to bypass GPU prefill latency. WebRTC (LiveKit), Qdrant, MongoDB, Redis, and Cassandra." />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://dharmendrra.github.io/banking-voice-ai-support-agent-v2/" />
+    <meta property="og:image" content="https://dharmendrra.github.io/banking-voice-ai-support-agent-v2/images/voice-agent-v2.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Voice AI Support Agent v2 dashboard - speech input waveform and real-time decision telemetry" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Voice AI Support Agent v2 — Multilingual Banking Edge" />
+    <meta name="twitter:description" content="Voice assistant in Go. Speculative cache probing to bypass GPU prefill latency. WebRTC (LiveKit), Qdrant, MongoDB, Redis, and Cassandra." />
+    <meta name="twitter:image" content="https://dharmendrra.github.io/banking-voice-ai-support-agent-v2/images/voice-agent-v2.png" />
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+
+    <style>
+        :root {
+            /* Premium dark theme - matches the dashboard */
+            --bg: #0a0c10;
+            --bg-alt: #121620;
+            --bg-soft: #1a2030;
+            --panel: #121620;
+            --text: #f5f6fa;
+            --text-strong: #ffffff;
+            --text-muted: #a4b0be;
+            --text-faint: #747d8c;
+            --border: #2f3542;
+            --border-soft: #3f4a60;
+            --accent: #6c5ce7; /* violet */
+            --accent-bright: #a55eea;
+            --accent-dark: #482ff7;
+            --accent-soft: rgba(108, 92, 231, 0.12);
+            --accent-border: rgba(108, 92, 231, 0.30);
+            --teal: #00cec9;
+            --teal-soft: rgba(0, 206, 201, 0.12);
+            --shadow: 0 1px 2px rgba(0,0,0,.4), 0 18px 50px rgba(0,0,0,.45);
+            --glow: 0 0 40px rgba(108, 92, 231, 0.15);
+            --maxw: 1120px;
+        }
+
+        * { box-sizing: border-box; }
+        html { scroll-behavior: smooth; }
+        body {
+            margin: 0;
+            font-family: 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            color: var(--text);
+            background: var(--bg);
+            line-height: 1.65;
+            -webkit-font-smoothing: antialiased;
+        }
+        a { color: var(--accent-bright); text-decoration: none; }
+        a:hover { text-decoration: underline; }
+        code, .mono { font-family: 'JetBrains Mono', ui-monospace, monospace; }
+
+        .wrap { max-width: var(--maxw); margin: 0 auto; padding: 0 24px; }
+        section { padding: 78px 0; }
+        .section-alt { background: var(--bg-alt); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+
+        h1, h2, h3 { line-height: 1.18; letter-spacing: -0.02em; margin: 0 0 .4em; color: var(--text-strong); }
+        h2 { font-size: clamp(1.7rem, 3vw, 2.25rem); font-weight: 700; }
+        .eyebrow { text-transform: uppercase; letter-spacing: .14em; font-size: .76rem; font-weight: 600; color: var(--teal); margin-bottom: 12px; }
+        .lead { font-size: 1.1rem; color: var(--text-muted); max-width: 760px; }
+
+        /* ---------- Nav ---------- */
+        header.nav {
+            position: sticky; top: 0; z-index: 50;
+            background: rgba(10, 12, 16, 0.82);
+            backdrop-filter: saturate(160%) blur(12px);
+            border-bottom: 1px solid var(--border);
+        }
+        .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 64px; }
+        .brand { font-weight: 800; font-size: 1.08rem; letter-spacing: -0.02em; color: var(--text-strong); display:flex; align-items:center; gap:9px; }
+        .brand .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 12px var(--accent); }
+        .brand span { color: var(--text-faint); font-weight: 600; }
+        .nav-links { display: flex; gap: 24px; align-items: center; }
+        .nav-links a { color: var(--text-muted); font-weight: 500; font-size: .93rem; }
+        .nav-links a:hover { color: var(--accent-bright); text-decoration: none; }
+        .nav-cta { background: var(--accent); color: #fff !important; padding: 8px 16px; border-radius: 9px; font-weight: 600; }
+        .nav-cta:hover { background: var(--accent-bright); text-decoration: none; }
+        @media (max-width: 820px) { .nav-links a:not(.nav-cta) { display: none; } }
+
+        /* ---------- Hero ---------- */
+        .hero { padding: 88px 0 64px; background:
+            radial-gradient(900px 380px at 80% -10%, rgba(108, 92, 231, 0.14), transparent 60%),
+            radial-gradient(700px 320px at 10% 0%, rgba(0, 206, 201, 0.08), transparent 60%); }
+        .hero h1 { font-size: clamp(2.4rem, 6vw, 3.7rem); font-weight: 800; }
+        .hero h1 .accent { color: var(--accent-bright); }
+        .hero .tagline { font-size: 1.18rem; color: var(--text-muted); max-width: 720px; margin-top: 10px; }
+        .hero-badges { display: flex; flex-wrap: wrap; gap: 10px; margin: 28px 0; }
+        .pill { background: var(--panel); border: 1px solid var(--border); padding: 6px 14px; border-radius: 999px; font-size: .84rem; font-weight: 500; color: var(--text-muted); }
+        .pill strong { color: var(--text-strong); }
+        .hero-cta { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 6px; }
+        .btn { display: inline-flex; align-items: center; gap: 8px; padding: 12px 22px; border-radius: 11px; font-weight: 600; font-size: .96rem; transition: .15s; }
+        .btn svg { width: 17px; height: 17px; }
+        .btn-primary { background: var(--accent); color: #fff; }
+        .btn-primary:hover { background: var(--accent-bright); text-decoration: none; box-shadow: var(--glow); }
+        .btn-ghost { background: var(--panel); color: var(--text); border: 1px solid var(--border-soft); }
+        .btn-ghost:hover { border-color: var(--accent); color: var(--accent-bright); text-decoration: none; }
+
+        /* ---------- Author strip ---------- */
+        .author { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; margin-top: 42px; padding-top: 28px; border-top: 1px solid var(--border); }
+        .author .who { font-weight: 700; color: var(--text-strong); }
+        .author .role { color: var(--text-faint); font-size: .9rem; }
+        .author-links { display: flex; gap: 18px; margin-left: auto; }
+        .author-links a { font-weight: 500; font-size: .9rem; }
+
+        /* ---------- Stats ---------- */
+        .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; }
+        @media (max-width: 760px) { .stats { grid-template-columns: repeat(2, 1fr); } }
+        .stat { text-align: center; }
+        .stat .num { font-size: 2rem; font-weight: 800; color: var(--teal); letter-spacing: -0.03em; }
+        .stat .label { color: var(--text-faint); font-size: .88rem; margin-top: 2px; }
+
+        /* ---------- Cards grid ---------- */
+        .grid { display: grid; gap: 22px; margin-top: 38px; }
+        .grid-2 { grid-template-columns: repeat(2, 1fr); }
+        @media (max-width: 800px) { .grid-2 { grid-template-columns: 1fr; } }
+        .card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 26px; transition: .18s; }
+        .card:hover { transform: translateY(-3px); border-color: var(--border-soft); box-shadow: var(--glow); }
+        .card h3 { font-size: 1.18rem; display: flex; align-items: center; gap: 10px; }
+        .card .badge { font-size: .7rem; font-weight: 600; padding: 3px 9px; border-radius: 6px; background: var(--accent-soft); color: var(--accent-bright); letter-spacing: .02em; border: 1px solid var(--accent-border); }
+        .card p { color: var(--text-muted); font-size: .95rem; margin: 0 0 14px; }
+        .tags { display: flex; flex-wrap: wrap; gap: 6px; }
+        .tag { font-size: .74rem; font-family: 'JetBrains Mono', monospace; background: var(--bg-soft); color: var(--text-faint); padding: 3px 9px; border-radius: 6px; border: 1px solid var(--border); }
+        .card .more { display: inline-block; margin-top: 16px; font-weight: 600; font-size: .9rem; }
+
+        /* ---------- Feature list ---------- */
+        .features { display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px; margin-top: 38px; }
+        @media (max-width: 900px) { .features { grid-template-columns: 1fr; } }
+        .feature { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 24px; }
+        .feature h3 { font-size: 1.05rem; }
+        .feature .ic { width: 44px; height: 44px; border-radius: 11px; background: var(--accent-soft); color: var(--accent-bright); display: grid; place-items: center; margin-bottom: 14px; border: 1px solid var(--accent-border); }
+        .feature .ic svg { width: 22px; height: 22px; }
+        .feature p { color: var(--text-muted); font-size: .93rem; margin: 0; }
+
+        /* ---------- In Action Diagram ---------- */
+        .action-showcase { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; align-items: center; margin-top: 40px; }
+        @media (max-width: 860px) { .action-showcase { grid-template-columns: 1fr; } }
+        .action-desc h3 { font-size: 1.3rem; margin-bottom: 12px; }
+        .action-desc ul { padding-left: 20px; color: var(--text-muted); font-size: 0.96rem; }
+        .action-desc li { margin-bottom: 10px; }
+        .action-desc strong { color: var(--text-strong); }
+
+        .pipeline { display: flex; flex-direction: column; gap: 14px; background: var(--bg-soft); padding: 24px; border-radius: var(--radius); border: 1px solid var(--border); }
+        .pl-branch { display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: 8px; border: 1px solid var(--border); font-size: 0.88rem; }
+        .pl-branch.a { border-color: rgba(0, 206, 201, 0.2); background: rgba(0, 206, 201, 0.05); }
+        .pl-branch.b { border-color: rgba(108, 92, 231, 0.2); background: rgba(108, 92, 231, 0.05); }
+        .pl-label { font-weight: 700; text-transform: uppercase; font-size: 0.72rem; padding: 2px 6px; border-radius: 4px; }
+        .pl-branch.a .pl-label { background: var(--teal-soft); color: var(--teal); }
+        .pl-branch.b .pl-label { background: var(--accent-soft); color: var(--accent-bright); }
+        .pl-flow { color: var(--text-muted); }
+        
+        .pl-merge { display: flex; justify-content: center; align-items: center; height: 32px; position: relative; }
+        .pl-merge::before { content: ""; position: absolute; top: -14px; bottom: -14px; width: 2px; background: var(--border); }
+        .pl-badge { background: var(--accent); color: #fff; font-size: 0.72rem; font-weight: 700; padding: 4px 10px; border-radius: 4px; z-index: 1; }
+
+        /* ---------- Code block ---------- */
+        pre { background: #06090f; color: #e2e8f0; border: 1px solid var(--border); border-radius: var(--radius); padding: 22px 24px; overflow-x: auto; font-family: 'JetBrains Mono', monospace; font-size: .85rem; line-height: 1.75; box-shadow: var(--shadow); }
+        pre .c { color: #64748b; }
+        pre .k { color: #7dd3fc; }
+        pre .s { color: #86efac; }
+
+        /* ---------- Figure / diagram ---------- */
+        .figure { margin: 34px 0 0; }
+        .figure-frame { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px; box-shadow: var(--shadow); text-align: center; }
+        .figure img { max-width: 100%; height: auto; display: block; margin: 0 auto; border-radius: 8px; }
+        .figure figcaption { color: var(--text-faint); font-size: .86rem; margin-top: 12px; }
+    </style>
+</head>
+<body>
+    <header class="nav">
+        <div class="wrap nav-inner">
+            <a href="#" class="brand">
+                <div class="dot"></div>
+                Voice Agent <span>v2</span>
+            </a>
+            <nav class="nav-links">
+                <a href="#overview">Overview</a>
+                <a href="#architecture">Architecture</a>
+                <a href="#optimization">Optimization</a>
+                <a href="#observability">Observability</a>
+                <a href="https://github.com/dharmendrra/banking-voice-ai-support-agent-v2" class="nav-cta">View GitHub</a>
+            </nav>
+        </div>
+    </header>
+
+    <main>
+        <!-- Hero -->
+        <section class="hero">
+            <div class="wrap">
+                <div class="eyebrow">Multilingual Voice AI Agent</div>
+                <h1>Next-Gen Voice AI<br />Banking Support Agent</h1>
+                <p class="tagline">A production-grade, low-latency, multilingual voice banking edge system in Go. Dynamic English/Hindi Turn Supervisor, speculative cache probing to bypass LLM latency, WebRTC media gateway, and Cassandra audit logs.</p>
+                
+                <div class="hero-badges">
+                    <span class="pill">Stack: <strong>Go 1.25 · LiveKit · Qdrant</strong></span>
+                    <span class="pill">Database: <strong>MongoDB · Redis · Cassandra</strong></span>
+                    <span class="pill">Edge Gateway: <strong>WebRTC (UDP)</strong></span>
+                </div>
+
+                <div class="hero-cta">
+                    <a href="https://github.com/dharmendrra/banking-voice-ai-support-agent-v2" class="btn btn-primary">
+                        <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"></path></svg>
+                        GitHub Repository
+                    </a>
+                </div>
+
+                <div class="author">
+                    <div class="who">Dharmendra Yadav</div>
+                    <div class="role">Lead Engineer &amp; Architect</div>
+                    <div class="author-links">
+                        <a href="https://linkedin.com/in/dharmendra-yadav-20b9a017">LinkedIn</a>
+                        <a href="https://github.com/dharmendrra">GitHub</a>
+                        <a href="https://dharmendrra.github.io/">Portfolio</a>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Stats -->
+        <div class="wrap" style="padding: 20px 0;">
+            <div class="stats">
+                <div class="stat">
+                    <div class="num">&lt; 200ms</div>
+                    <div class="stat-label">Response Latency</div>
+                </div>
+                <div class="stat">
+                    <div class="num">80%+</div>
+                    <div class="stat-label">LLM Prefill Saved</div>
+                </div>
+                <div class="stat">
+                    <div class="num">100%</div>
+                    <div class="stat-label">Double-Charge Protected</div>
+                </div>
+                <div class="stat">
+                    <div class="num">Cassandra</div>
+                    <div class="stat-label">Compliance Ledger</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Overview -->
+        <section id="overview" class="section-alt">
+            <div class="wrap">
+                <div class="eyebrow">Overview</div>
+                <h2>Autonomous voice-first support edge</h2>
+                <p class="lead">Built in Go, v2 replaces slow serial text execution with a highly parallelized edge framework designed for the strict safety, localization, and sub-second latency constraints of modern banking apps.</p>
+
+                <div class="grid grid-2">
+                    <div class="card">
+                        <h3>
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                            Saga Transaction Safeguards
+                            <span class="badge">Safety</span>
+                        </h3>
+                        <p>Implements client-side generated <code>unique_ref_no</code> to prevent duplicate debit actions on network retry loops. Automatically reconciles banking states with <code>payment_ref_no</code> returned on success.</p>
+                        <div class="tags">
+                            <span class="tag">MongoDB</span>
+                            <span class="tag">Idempotency</span>
+                            <span class="tag">Atomicity</span>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <h3>
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>
+                            Speculative Probing
+                            <span class="badge">Performance</span>
+                        </h3>
+                        <p>Runs local deflector LLM prefill (Ollama) in parallel with Qdrant vector database cache probes. Halted early on similarity scores &ge; 0.96 to bypass GPU inference queues entirely.</p>
+                        <div class="tags">
+                            <span class="tag">Qdrant</span>
+                            <span class="tag">Ollama</span>
+                            <span class="tag">Parallelism</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Architecture -->
+        <section id="architecture">
+            <div class="wrap">
+                <div class="eyebrow">System Architecture</div>
+                <h2>Symmetric Multi-Replica Topology</h2>
+                <p class="lead">The application uses Nginx L4 load balancing to route connections across three stateless Go orchestrator server replicas. Session states and confirmation tokens are synchronized in a shared Redis cache layer.</p>
+
+                <div class="figure">
+                    <div class="figure-frame">
+                        <img src="images/voice-agent-v2.png" alt="Voice AI Support Agent v2 Web Dashboard" />
+                        <figcaption>Voice AI Support Agent v2 control panel — exhibiting live waveforms, balance inquiries, and transaction registries.</figcaption>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Optimization -->
+        <section id="optimization" class="section-alt">
+            <div class="wrap">
+                <div class="eyebrow">Speculative Cache Probing</div>
+                <h2>Parallel Execution Pipeline</h2>
+                
+                <div class="action-showcase">
+                    <div class="action-desc">
+                        <h3>Bypassing GPU Prefill Latency</h3>
+                        <p>While the user is speaking, the edge gateway splits the speech recognition transcripts into two parallel execution branches:</p>
+                        <ul>
+                            <li><strong>Branch A (Speculative Prefill):</strong> Warm-ups the local deflector LLM (Ollama) to perform prefill computation on incremental tokens.</li>
+                            <li><strong>Branch B (Cache Probe):</strong> Checks Qdrant vector database collections for exact semantic matches against historical FAQ records or parameterized transaction triggers.</li>
+                            <li><strong>Halt Point:</strong> If Qdrant returns a score exceeding the EXTREME threshold (&ge; 0.96), Branch A is immediately aborted, saving CPU/GPU clock cycles.</li>
+                        </ul>
+                    </div>
+
+                    <div class="pipeline">
+                        <div class="pl-branch a">
+                            <span class="pl-label">Branch A</span>
+                            <span class="pl-flow">Speculative LLM Prefill (Ollama)</span>
+                        </div>
+                        <div class="pl-merge">
+                            <span class="pl-badge">Halt Signal (&ge; 0.96)</span>
+                        </div>
+                        <div class="pl-branch b">
+                            <span class="pl-label">Branch B</span>
+                            <span class="pl-flow">Qdrant Semantic Cache Probe</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Observability -->
+        <section id="observability">
+            <div class="wrap">
+                <div class="eyebrow">Observability &amp; Telemetry</div>
+                <h2>Durable Compliance Audit Logs</h2>
+                <p class="lead">Every turn decision point is recorded asynchronously. Logging runs on top of Redis Streams (our local Kafka stand-in) and writes to Apache Cassandra for time-series persistence.</p>
+
+                <div class="grid grid-2" style="align-items: center; gap: 32px;">
+                    <div>
+                        <h3>Telemetry Metrics Analyser</h3>
+                        <p>Our custom Go metrics analyzer outputs compliance reports based on live event streams:</p>
+                        <ul>
+                            <li><strong>Cache Hit Rate:</strong> Ratio of questions answered via cache/FAQ records vs. LLM deflection.</li>
+                            <li><strong>Wasted-Prefill Ratio:</strong> Prefill tokens wasted on turns that ended as cache hits.</li>
+                            <li><strong>Early-Halt Precision:</strong> Confirmed extreme-confidence cache hits verified by final transcript reconciles.</li>
+                        </ul>
+                        <pre><code class="language-bash">$ ./metrics.sh
+<span class="c"># Runs CLI metrics parser on top of Redis Stream logs</span></code></pre>
+                    </div>
+
+                    <div class="figure" style="margin: 0;">
+                        <div class="figure-frame">
+                            <img src="images/voice-agent-metrics.png" alt="Voice AI Support Agent v2 Metrics CLI Output" />
+                            <figcaption>Observability CLI output terminal displaying calculated cache statistics and prefill savings.</figcaption>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Getting Started -->
+        <section id="getting-started" class="section-alt">
+            <div class="wrap">
+                <div class="eyebrow">Getting Started</div>
+                <h2>Setup &amp; Deployment</h2>
+                <p class="lead">Run the integrated launcher script. It checks system prerequisites, downloads required models, compiles Go binaries, and starts the containerized database services.</p>
+
+                <pre><code class="language-bash"><span class="c"># 1. Clone the repository and execute bootstrapper</span>
+$ ./start-app-v2.sh
+
+<span class="c"># 2. View the dashboard panel in your browser</span>
+🔗 http://localhost:9090
+
+<span class="c"># 3. View the system performance telemetry report</span>
+$ ./metrics.sh
+
+<span class="c"># 4. Tear down the stack and clean data volumes</span>
+$ ./teardown.sh</code></pre>
+            </div>
+        </section>
+    </main>
+
+    <footer class="site-footer" style="padding: 40px 0; border-top: 1px solid var(--border); text-align: center; color: var(--text-faint); font-size: 0.9rem;">
+        <div class="wrap">
+            <p>&copy; 2026 Dharmendra Yadav. All rights reserved.</p>
+        </div>
+    </footer>
+</body>
+</html>
