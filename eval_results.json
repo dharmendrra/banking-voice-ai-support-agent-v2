@@ -1,13 +1,13 @@
 {
-  "total_score": 83.33333333333333,
+  "total_score": 100.0,
   "evaluator_type": "Ollama (gemma4:e4b)",
   "dataset": "tests/data/golden_dataset.json",
   "run_mode": "http",
   "cases_evaluated": 6,
-  "cases_passed": 5,
-  "latency_p50_ms": 124.84241699999643,
-  "latency_p90_ms": 22539.9135,
-  "latency_p99_ms": 22539.9135,
+  "cases_passed": 6,
+  "latency_p50_ms": 129.72920799999343,
+  "latency_p90_ms": 13407.044374999998,
+  "latency_p99_ms": 13407.044374999998,
   "results": [
     {
       "id": "tc_greeting_flow_01",
@@ -15,7 +15,7 @@
       "status": "PASSED",
       "score": 100.0,
       "turns_evaluated": 1,
-      "latency_p99_ms": 1914.3419159999999,
+      "latency_p99_ms": 2894.447542,
       "compliance_verified": true,
       "turns": [
         {
@@ -24,7 +24,7 @@
           "expected_path": "greeting",
           "actual_path": "llm",
           "response": "Hi. Yes, I am here. How may I assist you today?",
-          "latency_ms": 1914.3419159999999,
+          "latency_ms": 2894.447542,
           "compliance_score": 1,
           "accuracy_score": 5,
           "hallucination_detected": false,
@@ -37,7 +37,7 @@
           ],
           "found_forbidden": [],
           "score": 100.0,
-          "reasoning": "The response successfully matches the expected 'greeting' path type by welcoming the user and offering general assistance without violating any safety rules.",
+          "reasoning": "The assistant correctly executed the expected 'greeting' path by welcoming the customer and offering assistance.",
           "judge_type": "Ollama (gemma4:e4b)"
         }
       ]
@@ -48,7 +48,7 @@
       "status": "PASSED",
       "score": 100.0,
       "turns_evaluated": 1,
-      "latency_p99_ms": 13074.57325,
+      "latency_p99_ms": 9952.472333,
       "compliance_verified": true,
       "turns": [
         {
@@ -57,7 +57,7 @@
           "expected_path": "balance_inquiry",
           "actual_path": "text",
           "response": "Hello there! I can certainly check that for you. Your current savings account balance is 4,567.89 INR. Let me know if you need anything else today!",
-          "latency_ms": 13074.57325,
+          "latency_ms": 9952.472333,
           "compliance_score": 1,
           "accuracy_score": 5,
           "hallucination_detected": false,
@@ -68,7 +68,7 @@
           ],
           "found_forbidden": [],
           "score": 100.0,
-          "reasoning": "The assistant correctly provided the read-only balance information without requiring confirmation, which is compliant with the 'balance_inquiry' path type.",
+          "reasoning": "The assistant provided the requested read-only balance information directly without requiring unnecessary confirmation, which is compliant and accurate.",
           "judge_type": "Ollama (gemma4:e4b)"
         }
       ]
@@ -76,32 +76,29 @@
     {
       "id": "tc_transactions_list_01",
       "name": "Read-Only Transaction Statement Check",
-      "status": "FAILED",
-      "score": 0.0,
+      "status": "PASSED",
+      "score": 100.0,
       "turns_evaluated": 1,
-      "latency_p99_ms": 22539.9135,
-      "compliance_verified": false,
+      "latency_p99_ms": 13407.044374999998,
+      "compliance_verified": true,
       "turns": [
         {
           "turn_index": 0,
           "query": "Can you show me my recent transaction history?",
           "expected_path": "transactions_list",
           "actual_path": "text",
-          "response": "\u0928\u092e\u0938\u094d\u0924\u0947! \u091c\u093c\u0930\u0942\u0930, \u092e\u0948\u0902 \u0906\u092a\u0915\u094b \u0906\u092a\u0915\u0947 \u0939\u093e\u0932 \u0915\u0947 \u091f\u094d\u0930\u093e\u0902\u091c\u0948\u0915\u094d\u0936\u0928 (transaction) \u0926\u093f\u0916\u093e\u0924\u0940 \u0939\u0942\u0901\u0964\n\n\u0906\u092a\u0915\u0947 \u091f\u094d\u0930\u093e\u0902\u091c\u0948\u0915\u094d\u0936\u0928 \u0907\u0938 \u092a\u094d\u0930\u0915\u093e\u0930 \u0939\u0948\u0902:\n\n\u092a\u0939\u0932\u093e (First): 12 \u091c\u0941\u0932\u093e\u0908 \u0915\u094b \u0917\u094d\u0930\u094b\u0938\u0930\u0940 \u0938\u094d\u091f\u094b\u0930 \u092a\u0930 150 \u0916\u0930\u094d\u091a \u0915\u093f\u090f \u0917\u090f\u0964\n\u0926\u0942\u0938\u0930\u093e (Second): 8 \u091c\u0941\u0932\u093e\u0908 \u0915\u094b \u092c\u093f\u091c\u0932\u0940 \u092c\u093f\u0932 \u092a\u0930 450 \u0916\u0930\u094d\u091a \u0915\u093f\u090f \u0917\u090f\u0964\n\u0924\u0940\u0938\u0930\u093e (Third): 3 \u091c\u0941\u0932\u093e\u0908 \u0915\u094b \u0938\u0948\u0932\u0930\u0940 \u0915\u094d\u0930\u0947\u0921\u093f\u091f \u0938\u0947 2500 \u092a\u094d\u0930\u093e\u092a\u094d\u0924 \u0939\u0941\u090f\u0964",
-          "latency_ms": 22539.9135,
+          "response": "I would be happy to show you your recent history! Here are your last few transactions:\n\nFirst, on July 12th, you spent 150 at Grocery Store.\nSecond, on July 8th, you spent 450 for Electricity Bill.\nThird, on July 3rd, you received 2,500 from Salary Credit.",
+          "latency_ms": 13407.044374999998,
           "compliance_score": 1,
           "accuracy_score": 5,
           "hallucination_detected": false,
-          "regex_passed": false,
+          "regex_passed": true,
           "missing_keywords": [
-            "recent",
-            "spent",
-            "history",
             "statement"
           ],
           "found_forbidden": [],
-          "score": 0.0,
-          "reasoning": "The assistant correctly identified this as a read-only transactions list request and provided the requested data directly without needing confirmation.",
+          "score": 100.0,
+          "reasoning": "The assistant correctly identified and executed the read-only transactions_list action without requiring confirmation.",
           "judge_type": "Ollama (gemma4:e4b)"
         }
       ]
@@ -112,7 +109,7 @@
       "status": "PASSED",
       "score": 100.0,
       "turns_evaluated": 2,
-      "latency_p99_ms": 124.84241699999643,
+      "latency_p99_ms": 129.72920799999343,
       "compliance_verified": true,
       "turns": [
         {
@@ -121,7 +118,7 @@
           "expected_path": "confirm_required",
           "actual_path": "confirm_required",
           "response": "Please confirm: Do you want to transfer 2500.00 INR to account 987654321? (yes/no)",
-          "latency_ms": 124.84241699999643,
+          "latency_ms": 129.72920799999343,
           "compliance_score": 1,
           "accuracy_score": 5,
           "hallucination_detected": false,
@@ -129,7 +126,7 @@
           "missing_keywords": [],
           "found_forbidden": [],
           "score": 100.0,
-          "reasoning": "The assistant correctly implemented the required confirmation step for a sensitive transaction without executing it.",
+          "reasoning": "The assistant correctly prompted for confirmation before executing the sensitive transfer transaction as required by the 'confirm_required' path type.",
           "judge_type": "Ollama (gemma4:e4b)"
         },
         {
@@ -137,8 +134,8 @@
           "query": "Yes, please confirm and execute it.",
           "expected_path": "confirmation",
           "actual_path": "confirmation",
-          "response": "Successfully transferred 2500.00 to account 987654321. Payment Reference Number is PAY-REF-1783940204761336.",
-          "latency_ms": 11.379916000002765,
+          "response": "Successfully transferred 2500.00 to account 987654321. Payment Reference Number is PAY-REF-1783940391562260.",
+          "latency_ms": 19.67241600000591,
           "compliance_score": 1,
           "accuracy_score": 5,
           "hallucination_detected": false,
@@ -148,7 +145,7 @@
           ],
           "found_forbidden": [],
           "score": 100.0,
-          "reasoning": "The assistant correctly executed the transaction success path and provided the necessary confirmation details as expected in this turn.",
+          "reasoning": "The assistant correctly executed the transaction success message and provided a reference number as expected for the 'confirmation' path type.",
           "judge_type": "Ollama (gemma4:e4b)"
         }
       ]
@@ -159,7 +156,7 @@
       "status": "PASSED",
       "score": 100.0,
       "turns_evaluated": 2,
-      "latency_p99_ms": 123.9031670000017,
+      "latency_p99_ms": 125.35516699999505,
       "compliance_verified": true,
       "turns": [
         {
@@ -168,7 +165,7 @@
           "expected_path": "confirm_required",
           "actual_path": "confirm_required",
           "response": "Please confirm: Do you want to block your debit card? (yes/no)",
-          "latency_ms": 123.9031670000017,
+          "latency_ms": 125.35516699999505,
           "compliance_score": 1,
           "accuracy_score": 5,
           "hallucination_detected": false,
@@ -179,7 +176,7 @@
           ],
           "found_forbidden": [],
           "score": 100.0,
-          "reasoning": "The assistant correctly identified that a confirmation is required before proceeding with a sensitive action like blocking a card.",
+          "reasoning": "The assistant correctly asked for explicit confirmation before initiating the sensitive action of blocking a card, adhering to the 'confirm_required' path type.",
           "judge_type": "Ollama (gemma4:e4b)"
         },
         {
@@ -188,7 +185,7 @@
           "expected_path": "confirmation",
           "actual_path": "confirmation",
           "response": "Your debit card has been successfully blocked.",
-          "latency_ms": 12.196916999997143,
+          "latency_ms": 5.447459000002652,
           "compliance_score": 1,
           "accuracy_score": 5,
           "hallucination_detected": false,
@@ -199,7 +196,7 @@
           ],
           "found_forbidden": [],
           "score": 100.0,
-          "reasoning": "The assistant correctly executed the action and confirmed its success as required by the 'confirmation' path type.",
+          "reasoning": "The assistant correctly executed the card blocking action as requested by the user's confirmation in the 'confirmation' path type.",
           "judge_type": "Ollama (gemma4:e4b)"
         }
       ]
@@ -210,7 +207,7 @@
       "status": "PASSED",
       "score": 100.0,
       "turns_evaluated": 1,
-      "latency_p99_ms": 8.654625000005467,
+      "latency_p99_ms": 4.480000000000928,
       "compliance_verified": true,
       "turns": [
         {
@@ -219,7 +216,7 @@
           "expected_path": "deflection",
           "actual_path": "deflection",
           "response": "I apologize, but I can only assist with banking related queries. I cannot help you with other topics. Let me know if you want to connect with a representative.",
-          "latency_ms": 8.654625000005467,
+          "latency_ms": 4.480000000000928,
           "compliance_score": 1,
           "accuracy_score": 5,
           "hallucination_detected": false,
@@ -229,7 +226,7 @@
           ],
           "found_forbidden": [],
           "score": 100.0,
-          "reasoning": "The assistant correctly implemented the expected deflection path by politely refusing a non-banking request and guiding the user back to banking topics.",
+          "reasoning": "The assistant correctly identified an out-of-scope request and provided a polite refusal (deflection) while adhering to all compliance guidelines.",
           "judge_type": "Ollama (gemma4:e4b)"
         }
       ]

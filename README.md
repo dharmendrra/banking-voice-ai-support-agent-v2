@@ -1,78 +1,113 @@
-# Multilingual Voice AI Banking Support Agent (v2)
+# Architectural Blueprint: Distributed Voice AI Banking Support Agent (V2)
 
-A production-grade, low-latency, multilingual Voice AI banking agent built in Go. It supports conversational state management (Turn Supervisor), slot-filling parameter collection, semantic caching, and strict transaction safety (using client reference numbers for de-duplication).
-
----
-
-## 🏗️ Architecture Overview
-
-The system runs a modular, containerized multi-service architecture scaled behind an Nginx load balancer to support high-throughput, low-latency voice interactions.
-
-```mermaid
-graph TD
-    Client[WebSocket Client / Frontend] -->|WS / Port 9090| Nginx[Nginx Load Balancer]
-    Nginx -->|Proxy / Port 9082| ME[Media Engine Replicas]
-    ME -->|HTTP / Port 9083| TS[Turn Supervisor Orchestrator Replicas]
-    TS -->|Read/Write| Redis[Redis Session State & Audit Logs]
-    TS -->|Vector Search| Qdrant[Qdrant Semantic Cache]
-    TS -->|Database Ledger| Mongo[MongoDB Ledger Store]
-    TS -->|LLM Deflector| Ollama[Local Ollama Server]
-```
-
-### Key Technical Specs:
-*   **Edge Layer:** WebSocket connection edge server in Go (`cmd/media-engine`).
-*   **Orchestration:** State machine,Turn Supervisor, and Hindi/Hinglish language detection (`cmd/llm-orchestrator-server`).
-*   **Database & Cache:** MongoDB for transaction ledger, Qdrant for semantic caching, and Redis for Saga confirmation states & Audit logs.
-*   **Deflector LLM:** Locally deployed `gemma2:2b` via Ollama for conversational fallback.
+A production-grade, low-latency, highly decoupled Voice AI banking agent built from first principles in Go. The architecture is optimized for sub-300ms interaction latencies, strict transaction safety, and horizontal scaling. It is built to satisfy the core capabilities expected of a Forward Deployed Engineering (FDE) team: bridging complex business requirements (real-time banking, compliance) with scalable distributed systems design.
 
 ---
 
-## ⚡ Core Features
+## 🏗️ Architectural Evolution: V1 vs. V2
 
-1.  **Multilingual Turn Supervisor:** unicode-based language detection. If the user initiates a query or transaction in Hindi or Hinglish, the supervisor dynamically swaps language templates to respond in the user's input language.
-2.  **Semantic Caching & Load Shedding:** Speculative Prefill (Ollama) and Cache Probe (Qdrant) run in parallel. A cache hit $\ge 0.96$ cosine similarity immediately halts LLM inference to reclaim GPU cycles.
-3.  **Strict Transaction Safety:** 
-    *   **`unique_ref_no` (Unique Reference Number):** Generated client-side on intent confirmation to prevent double-charging.
-    *   **`payment_ref_no` (Payment Reference Number):** Returned on success by the ledger system and cached locally to handle network retries safely.
+### Legacy Architecture (V1)
+In V1, the system was comprised of only two main services: **`media-engine`** and **`llm-orchestrator`**.
+* **The Problem**: Real-time voice interactions require extremely stable audio frame rendering. Under the legacy model, `llm-orchestrator` was a monolith executing database reads/writes (MongoDB), vector searches (Qdrant), session management, and external API requests synchronously on the request-response loop.
+* **The Impact**: Slow write transactions (e.g., transfers, card blocking) or high-latency LLM generations introduced jitters, buffer delays, and packet drops in the WebRTC audio channel.
+
+### Decoupled Microservices Architecture (V2)
+To isolate heavy computing tasks (LLM inference, database writes, vector caching) from the WebRTC audio stream, the architecture was fully decoupled into **8 specialized microservices** coordinated asynchronously.
+
+1. **`media-engine`**: High-performance WebRTC connection gateway interfacing with LiveKit. Handles real-time audio chunk streaming, Voice Activity Detection (VAD) endpointing, and coordinates TTS/STT pipelines.
+2. **`llm-micro-orchestrator`**: A stateless, highly concurrent routing orchestrator managing intent routing, multi-turn state transitions, and template compilation.
+3. **`session-context-service`**: Manages transient session state, parameters (slot-filling), and temporary conversation histories over Redis.
+4. **`semantic-cache-service`**: Executes fast semantic vector probes in parallel with LLM inference to deflect queries and reclaim GPU/CPU cycles.
+5. **`llm-inference-service`**: A standardized model-agnostic wrapper that executes local models (served via Ollama) and exposes slots to seamlessly plug in Cloud LLMs (e.g., Gemini, OpenAI) via environment variables with zero code changes.
+6. **`tool-execution-service`**: Executes mutative ledger-level actions (MongoDB) and transactional validations.
+7. **`conversation-history-consumer`**: An async worker draining Redis streams to persist conversation transcripts to Cassandra.
+8. **`audit-log-consumer`**: An async worker draining Redis streams to persist security/transaction audits to Cassandra.
 
 ---
 
-## 🚀 Getting Started
+## 🎨 Architectural Design Diagrams
 
-### Prerequisites
-Make sure you have the following installed on your machine:
-*   **Docker Desktop** (Active running daemon)
-*   **Ollama** (Running locally on port `11434`)
+### 1. Basic Voice AI Flow
+This shows the sequential block flow of a standard Voice AI turn: capturing user microphone input, transcribing to text, generating an agent response, synthesizing to audio speech, and playing it back.
 
-### Setup & Launch
-Simply execute the intelligent bootstrapper script. It checks system prerequisites, downloads required LLM models (`qwen2.5:7b-instruct` and `bge-m3`), compiles Go binaries, and launches the container stack:
+![Basic Flow](docs/images/basic_flow.jpg)
 
+### 2. High-Level Design (HDD)
+This diagram illustrates the fully decoupled 8-service architecture. Nginx serves as the single WebSocket entry point, balancing traffic to media engine replicas, which talk to the stateless micro-orchestrator. Data writes, caching, and analytics are isolated across Redis, MongoDB, Qdrant, and Cassandra.
+
+![High-Level Design](docs/images/hdd_architecture.jpg)
+
+### 3. Low-Level Design & Data Flow Diagram (LLD / DFD)
+This diagram details the sequence of operations and real-time data flow (DFD) for a single user utterance. Audio streaming, Speech-to-Text, parallel vector cache probes, LLM generation, tool validation, and Text-to-Speech synthesis execute in a low-latency pipeline, while transaction logging is offloaded asynchronously to Cassandra.
+
+![Low-Level Design](docs/images/lld_sequence_clean.jpg)
+
+---
+
+## ⚠️ Flaws of the Basic Flow in Banking (And How V2 Resolves Them)
+
+While the **Basic Voice AI Flow** (`User -> STT -> LLM -> TTS -> User`) is a standard baseline for voice interaction, applying it directly to a production banking environment exposes several critical architectural and security flaws:
+
+| Architectural Flaw in Basic Flow | Impact in Banking | V2 Resolution Mechanism |
+| :--- | :--- | :--- |
+| **No Authentication Gate** | Exposes private ledger data (balances, statements) without verification. | **Redis Session Intercept**: Every turn is validated against the `session-context-service`. Unauthenticated sessions are forced into an OTP/PIN sub-flow. |
+| **Instant / Unconfirmed Writes** | User speech errors (e.g. misspelling names or amounts) trigger immediate, irreversible money transfers. | **2-Stage Write State Machine**: Mutative actions (transfers, card blocks) are staged in Redis as `StateAwaitingConfirmation`. They require positive user confirmation and a client-side idempotency token (`unique_ref_no`) before execution. |
+| **Synchronous Database Writes** | Long-running database operations (MongoDB / Cassandra) block the audio loop, causing audio packet jitter and drops. | **Event Stream Offloading**: Write queries are decoupled. Transactions are verified in MongoDB, while analytical logs and transcripts are offloaded to Redis streams and consumed asynchronously by Cassandra workers. |
+| **GPU Latency & Cost Spikes** | Simple or repetitive queries (greetings, ATM searches) hit the LLM, introducing high processing delays (>1.5s) and cost. | **Semantic Cache Deflection**: Orchestrator queries Qdrant vector store in parallel with speculative LLM inference. A hit $\ge 0.96$ similarity cancels the LLM thread and responds in <10ms. |
+| **Prompt Injection & Scope Leaks** | Prompt injection attacks ("Ignore previous rules...") can leak internal system prompts or prompt malicious behavior. | **Regex Guardrails & Deflection**: Out-of-scope queries are blocked before LLM execution, returning static deflection responses directly. |
+
+---
+
+## ⚡ Core Technical Decisions & Optimizations
+
+### 1. Multilingual Turn Supervisor
+* **Unicode/Regex Language Classification**: The system intercepts the Speech-to-Text output and executes quick regex and Unicode character classification to detect Hindi/Hinglish vs. English.
+* **Dynamic Template Swapping**: If Hindi/Hinglish is detected, the supervisor dynamically swaps system prompt templates, instructing the LLM to output in matching Hinglish. This maintains conversational comfort and natural flow without requiring translation middle-layers.
+
+### 2. Semantic Caching & Load Shedding
+* **Parallel Cache Probing**: When a transcribed utterance arrives, the `llm-micro-orchestrator` starts speculative LLM inference in the background while concurrently querying Qdrant for a semantic cache match.
+* **Early Deflection**: If the Qdrant query returns a cache hit with a cosine similarity score $\ge 0.96$, the orchestrator immediately uses context cancellation to abort the pending LLM inference thread. This load-shedding mechanism immediately reclaims GPU cycles and delivers sub-10ms response latencies.
+
+### 3. Transaction Safety & Saga Idempotency
+* **2-Stage Write Confirmation**: Sensitive write operations (e.g., executing money transfers, blocking credit cards) require explicit user confirmation. The orchestrator transitions the session to `StateAwaitingConfirmation`.
+* **Idempotent Token (`unique_ref_no`)**: When the user says "yes" to confirm, the client frontend attaches a client-side generated UUID (`unique_ref_no`).
+* **Double-Charge Mitigation**: If the WebSocket drops and reconnects during the write execution, the retried transaction is matched against MongoDB's `unique_ref_no` index. The ledger returns the cached `payment_ref_no` instead of executing a duplicate charge.
+
+---
+
+## 🎙️ Hybrid STT / TTS Pipeline
+Every deployment approach retains local model capabilities with cloud extension interfaces:
+
+* **Speech-to-Text (STT)**: Uses Web Speech API on the client side with automatic watchdog recovery to handle silent Chrome browser drops.
+* **Text-to-Speech (TTS)**: A hybrid pipeline utilizing **Kokoro-82M** (a local high-quality neural TTS model running natively with PyTorch Metal/MPS GPU acceleration on macOS), falling back to Google Translate TTS and native browser SpeechSynthesis.
+* **Cloud Pluggability**: Standardized request schemas allow the `llm-inference-service` to dynamically route requests to external cloud model providers (like Gemini or OpenAI) by supplying their respective API keys in the environment config.
+
+---
+
+## 🚀 Operations & Deployment
+
+### Directory & Component Layout
+* **`cmd/`**: Entry points for the 8 decoupled microservices and the observability CLI.
+* **`internal/`**: Core logic (orchestrator state machine, Cassandra/Mongo managers, telemetry, and MCP tools).
+* **`native-kokoro/`**: Fast local neural TTS service setup.
+
+### Getting Started
+To boot the entire container stack, compile the Go binaries, and start the local services:
 ```bash
+# Intelligent macOS arm64 bootstrapper (compiles binaries, provisions DBs, starts containers)
 ./start-app-v2.sh
 ```
-
-Once running, the script will automatically open the Control Panel dashboard in your browser:
-🔗 **[http://localhost:9090](http://localhost:9090)**
-
-To force a full rebuild and clean restart, run:
-```bash
-./start-app-v2.sh --force
-```
-
-### Teardown & Stop
-To cleanly stop all container services and free up port assignments:
-
+* Once running, access the banking control panel at: **[http://localhost:9090](http://localhost:9090)**
+* To cleanly terminate the stack:
 ```bash
 ./terminate.sh
 ```
 
----
-
-## ⚙️ Ports and Endpoint Layout
-
-*   **Public Gateway (Dashboard / Websocket):** Port **`9090`**
-*   **Media Engine Service (Internal):** Port **`9082`**
-*   **LLM Orchestrator Server (Internal):** Port **`9083`**
-*   **Qdrant Vector Database:** Port **`6333`**
-*   **Redis Cache Server:** Port **`6379`**
-*   **MongoDB Ledger database:** Port **`27017`**
+### Port Layout
+* **Public Gateway / Load Balancer**: Port `9090`
+* **LiveKit WebRTC Server**: Port `7880`
+* **Ollama (Local LLM server)**: Port `11434`
+* **Qdrant Vector Database**: Port `6333`
+* **MongoDB (Ledger)**: Port `27017`
+* **Redis (Session Context)**: Port `6379`
+* **Cassandra (Audit/History)**: Port `9042`
